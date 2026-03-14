@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 01-01 complete
-last_updated: "2026-03-14T09:50:46.783Z"
-last_activity: 2026-03-14 — Plan 01-01 completed for Provider Foundation
+stopped_at: Plan 01-02 complete
+last_updated: "2026-03-14T09:55:49.345Z"
+last_activity: 2026-03-14 — Plan 01-02 completed for Provider Foundation
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 1 of 5 (Provider Foundation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-14 — Plan 01-01 completed for Provider Foundation
+Last activity: 2026-03-14 — Plan 01-02 completed for Provider Foundation
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -61,6 +61,8 @@ Recent decisions affecting current work:
 - Phase 0: Telegram is primary and the dashboard stays read-only in v1.
 - Phase 0: Paper trading stays human-approved on entry with max open positions = 1.
 - Phase 1: Provider adapters own vendor payload normalization and emit internal `ProviderBatch` models for downstream use.
+- Phase 1: Runtime schedule is evaluated in ET business time with UTC-safe inputs.
+- Phase 1: Universe eligibility fails closed when exchange, instrument type, common-stock status, price, or ADV cannot be trusted.
 
 ### Pending Todos
 
@@ -74,5 +76,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-14T09:47:41.994Z
-Stopped at: Plan 01-01 complete
-Resume file: .planning/phases/01-provider-foundation/01-02-PLAN.md
+Stopped at: Plan 01-02 complete
+Resume file: .planning/phases/01-provider-foundation/01-03-PLAN.md
