@@ -11,7 +11,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Provider Foundation** - Establish provider abstractions, runtime window, freshness rules, and initial universe filtering. (completed 2026-03-14)
-- [ ] **Phase 2: Scanner Metrics and Candidate Feed** - Build the ranked scanner row pipeline and required market/news-derived fields.
+- [x] **Phase 2: Scanner Metrics and Candidate Feed** - Build the scanner row pipeline, live candidate feed state, and required market/news-derived fields. (completed 2026-03-14)
 - [ ] **Phase 3: Strategy Validity and Ranking** - Add momentum pullback defaults, trigger logic, invalidations, `setup_valid`, and score/rank behavior.
 - [ ] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management.
 - [ ] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries.
@@ -46,9 +46,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Build feature calculation for scanner metrics and market/news context
-- [ ] 02-02: Assemble ranked candidate rows with required output fields
-- [ ] 02-03: Add candidate persistence or caching needed for downstream strategy evaluation
+- [x] 02-01: Build history inputs and scanner metric calculation primitives
+- [x] 02-02: Assemble symbol-centric candidate rows with latest-headline semantics
+- [x] 02-03: Add live candidate-feed state, ordering, and trust-aware updates
 
 ### Phase 3: Strategy Validity and Ranking
 **Goal**: Turn the candidate feed into a strategy-specific scanner by applying momentum pullback defaults, invalidations, and ranking.
@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Provider Foundation | 3/3 | Complete    | 2026-03-14 |
-| 2. Scanner Metrics and Candidate Feed | 0/3 | Not started | - |
+| 2. Scanner Metrics and Candidate Feed | 3/3 | Complete    | 2026-03-14 |
 | 3. Strategy Validity and Ranking | 0/3 | Not started | - |
 | 4. Telegram Workflow and Paper Broker | 0/4 | Not started | - |
 | 5. Monitoring, Audit, and Review Surface | 0/3 | Not started | - |

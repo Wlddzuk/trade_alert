@@ -11,14 +11,14 @@
 - [x] **DATA-02**: Operator can rely on hard universe filters for price and average daily volume before candidates are surfaced.
 - [x] **DATA-03**: Operator can rely on near-real-time Polygon.io market-data updates during the configured runtime window.
 - [x] **DATA-04**: Operator can rely on near-real-time Benzinga news updates during the configured runtime window.
-- [ ] **DATA-05**: Operator can see time since news and a simple catalyst classification attached to surfaced candidates.
+- [x] **DATA-05**: Operator can see time since news and a simple catalyst classification attached to surfaced candidates.
 
 ### Scanner
 
-- [ ] **SCAN-01**: Operator can view scanner rows containing symbol, price, volume, average daily volume, gap %, % change from prior close, and why surfaced.
-- [ ] **SCAN-02**: Operator can view daily relative volume calculated from a configurable baseline with 20-day average as the initial default.
-- [ ] **SCAN-03**: Operator can view short-term relative volume using current 5-minute volume versus the 20-day time-of-day baseline.
-- [ ] **SCAN-04**: Operator can view pullback % from high of day for surfaced candidates.
+- [x] **SCAN-01**: Operator can view scanner rows containing symbol, price, volume, average daily volume, gap %, % change from prior close, and why surfaced.
+- [x] **SCAN-02**: Operator can view daily relative volume calculated from a configurable baseline with 20-day average as the initial default.
+- [x] **SCAN-03**: Operator can view short-term relative volume using current 5-minute volume versus the 20-day time-of-day baseline.
+- [x] **SCAN-04**: Operator can view pullback % from high of day for surfaced candidates.
 - [ ] **SCAN-05**: Operator can view a current `setup_valid` status for each surfaced candidate.
 - [ ] **SCAN-06**: Operator can view a score/rank that prioritizes surfaced candidates.
 
@@ -84,11 +84,11 @@
 | DATA-02 | Phase 1 | Complete |
 | DATA-03 | Phase 1 | Complete |
 | DATA-04 | Phase 1 | Complete |
-| DATA-05 | Phase 2 | Pending |
-| SCAN-01 | Phase 2 | Pending |
-| SCAN-02 | Phase 2 | Pending |
-| SCAN-03 | Phase 2 | Pending |
-| SCAN-04 | Phase 2 | Pending |
+| DATA-05 | Phase 2 | Complete |
+| SCAN-01 | Phase 2 | Complete |
+| SCAN-02 | Phase 2 | Complete |
+| SCAN-03 | Phase 2 | Complete |
+| SCAN-04 | Phase 2 | Complete |
 | SCAN-05 | Phase 3 | Pending |
 | SCAN-06 | Phase 3 | Pending |
 | SIG-01 | Phase 3 | Pending |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-14 after Phase 1 completion*
+*Last updated: 2026-03-14 after Phase 2 completion*

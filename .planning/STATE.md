@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-14T14:55:27.401Z"
-last_activity: 2026-03-14 — Phase 1 Provider Foundation completed and verified
+stopped_at: Phase 2 completed and verified
+last_updated: "2026-03-14T22:03:06Z"
+last_activity: 2026-03-14 — Phase 2 Scanner Metrics and Candidate Feed completed and verified
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 20
+  completed_phases: 2
+  total_plans: 16
+  completed_plans: 6
+  percent: 38
 ---
 
 # Project State
@@ -21,32 +21,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Surface high-quality, news-driven momentum pullback opportunities early enough, with enough context and risk structure, that the operator can make faster and more consistent paper-trading decisions.
-**Current focus:** Phase 2: Scanner Metrics and Candidate Feed
+**Current focus:** Phase 3: Strategy Validity and Ranking
 
 ## Current Position
 
-Phase: 2 of 5 (Scanner Metrics and Candidate Feed)
+Phase: 3 of 5 (Strategy Validity and Ranking)
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-14 — Phase 1 Provider Foundation completed and verified
+Status: Ready to discuss
+Last activity: 2026-03-14 — Phase 2 Scanner Metrics and Candidate Feed completed and verified
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 2.3 min
-- Total execution time: 0.1 hours
+- Total plans completed: 6
+- Average duration: 2.5 min
+- Total execution time: 0.3 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 3 | 7 min | 2.3 min |
+| 2 | 3 | 8 min | 2.7 min |
 
 **Recent Trend:**
-- Last 5 plans: 2 min, 2 min, 3 min
+- Last 5 plans: 2 min, 3 min, 2 min, 2 min, 3 min
 - Trend: Stable
 
 ## Accumulated Context
@@ -65,6 +66,9 @@ Recent decisions affecting current work:
 - Phase 1: Universe eligibility fails closed when exchange, instrument type, common-stock status, price, or ADV cannot be trusted.
 - Phase 1: Provider freshness is evaluated per capability, and scanner trust degrades if either market-data or news updates go stale during the active runtime window.
 - Phase 1: Trust restoration uses an explicit recovering state so actionable output stays blocked until both providers are clean again.
+- Phase 2: Scanner rows stay symbol-centric, with the latest related headline driving the displayed catalyst tag and time-since-news value.
+- Phase 2: Daily RVOL uses ratio-based x-multipliers and short-term RVOL uses same-time-of-day 5-minute baselines.
+- Phase 2: The live candidate feed is unified across premarket and the open, ordered by freshest news then % move, and suppressed when trust is non-actionable.
 
 ### Pending Todos
 
@@ -72,11 +76,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- Score/rank design still needs an explicit v1 model.
-- Soft trade-quality definitions still need measurable rule wording.
+- Score/rank design still needs an explicit v1 model for Phase 3.
+- Soft trade-quality definitions still need measurable wording for momentum integrity, poor follow-through, and late-in-move rejection.
 
 ## Session Continuity
 
-Last session: 2026-03-14T14:55:27.396Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-scanner-metrics-and-candidate-feed/02-CONTEXT.md
+Last session: 2026-03-14T22:03:06Z
+Stopped at: Phase 2 completed and verified
+Resume file: .planning/ROADMAP.md
