@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from .models import MarketSnapshot, NewsEvent, ProviderBatch
+from .models import DailyBar, IntradayBar, MarketSnapshot, NewsEvent, ProviderBatch
 
 
 def utc_now() -> datetime:
@@ -39,6 +39,25 @@ class MarketDataProvider(ABC):
         self,
         symbols: Sequence[str],
     ) -> ProviderBatch[MarketSnapshot]:
+        ...
+
+    @abstractmethod
+    async def fetch_daily_bars(
+        self,
+        symbols: Sequence[str],
+        *,
+        lookback_days: int = 20,
+    ) -> ProviderBatch[DailyBar]:
+        ...
+
+    @abstractmethod
+    async def fetch_intraday_bars(
+        self,
+        symbols: Sequence[str],
+        *,
+        interval_minutes: int = 5,
+        lookback_days: int = 20,
+    ) -> ProviderBatch[IntradayBar]:
         ...
 
 

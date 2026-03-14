@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Generic, TypeVar
@@ -144,6 +144,64 @@ class MarketSnapshot:
             raise ValueError("session_volume must be zero or greater")
         if self.exchange is not None:
             object.__setattr__(self, "exchange", self.exchange.strip().upper())
+
+
+@dataclass(frozen=True, slots=True)
+class DailyBar:
+    symbol: str
+    provider: str
+    trading_date: date
+    observed_at: datetime
+    open_price: Decimal | float | int | str
+    high_price: Decimal | float | int | str
+    low_price: Decimal | float | int | str
+    close_price: Decimal | float | int | str
+    volume: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbol", normalize_symbol(self.symbol))
+        object.__setattr__(self, "provider", normalize_provider(self.provider))
+        object.__setattr__(self, "observed_at", ensure_utc(self.observed_at, field_name="observed_at"))
+        object.__setattr__(self, "open_price", to_decimal(self.open_price, field_name="open_price"))
+        object.__setattr__(self, "high_price", to_decimal(self.high_price, field_name="high_price"))
+        object.__setattr__(self, "low_price", to_decimal(self.low_price, field_name="low_price"))
+        object.__setattr__(self, "close_price", to_decimal(self.close_price, field_name="close_price"))
+        if isinstance(self.trading_date, datetime):
+            object.__setattr__(
+                self,
+                "trading_date",
+                ensure_utc(self.trading_date, field_name="trading_date").date(),
+            )
+        elif not isinstance(self.trading_date, date):
+            raise ValueError("trading_date must be a date")
+        if self.volume < 0:
+            raise ValueError("volume must be zero or greater")
+
+
+@dataclass(frozen=True, slots=True)
+class IntradayBar:
+    symbol: str
+    provider: str
+    start_at: datetime
+    interval_minutes: int
+    open_price: Decimal | float | int | str
+    high_price: Decimal | float | int | str
+    low_price: Decimal | float | int | str
+    close_price: Decimal | float | int | str
+    volume: int
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbol", normalize_symbol(self.symbol))
+        object.__setattr__(self, "provider", normalize_provider(self.provider))
+        object.__setattr__(self, "start_at", ensure_utc(self.start_at, field_name="start_at"))
+        object.__setattr__(self, "open_price", to_decimal(self.open_price, field_name="open_price"))
+        object.__setattr__(self, "high_price", to_decimal(self.high_price, field_name="high_price"))
+        object.__setattr__(self, "low_price", to_decimal(self.low_price, field_name="low_price"))
+        object.__setattr__(self, "close_price", to_decimal(self.close_price, field_name="close_price"))
+        if self.interval_minutes <= 0:
+            raise ValueError("interval_minutes must be greater than zero")
+        if self.volume < 0:
+            raise ValueError("volume must be zero or greater")
 
 
 @dataclass(frozen=True, slots=True)
