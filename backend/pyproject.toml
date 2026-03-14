@@ -1,0 +1,19 @@
+[project]
+name = "buy-signal-backend"
+version = "0.1.0"
+description = "Provider foundation for the Buy Signal backend."
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4.2,<9.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.uv]
+package = false
