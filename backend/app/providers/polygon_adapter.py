@@ -116,6 +116,8 @@ class PolygonSnapshotProvider(MarketDataProvider):
         bars = await self._fetch_aggregate_history(
             normalized_symbols,
             received_at=received_at,
+            start_date=start_date,
+            end_date=end_date,
             path_template="/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}",
             params={"adjusted": "true", "sort": "asc", "limit": lookback_days},
             normalizer=self._normalize_daily_bar,
@@ -149,6 +151,8 @@ class PolygonSnapshotProvider(MarketDataProvider):
         bars = await self._fetch_aggregate_history(
             normalized_symbols,
             received_at=received_at,
+            start_date=start_date,
+            end_date=end_date,
             path_template=f"/v2/aggs/ticker/{{symbol}}/range/{interval_minutes}/minute/{{start}}/{{end}}",
             params={"adjusted": "true", "sort": "asc", "limit": lookback_days * 78},
             normalizer=lambda symbol, raw_item: self._normalize_intraday_bar(
@@ -208,13 +212,13 @@ class PolygonSnapshotProvider(MarketDataProvider):
         symbols: Sequence[str],
         *,
         received_at: datetime,
+        start_date: str,
+        end_date: str,
         path_template: str,
         params: Mapping[str, Any],
         normalizer: Callable[[str, Any], DailyBar | IntradayBar],
     ) -> tuple[DailyBar | IntradayBar, ...]:
         bars: list[DailyBar | IntradayBar] = []
-        start_date = (received_at - timedelta(days=60)).date().isoformat()
-        end_date = received_at.date().isoformat()
 
         for symbol in symbols:
             try:
