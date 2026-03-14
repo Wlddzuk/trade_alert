@@ -63,7 +63,7 @@ def daily_relative_volume(
     lookback_days: int = 20,
 ) -> tuple[Decimal | None, Decimal | None]:
     adv = average_daily_volume(daily_bars, symbol=snapshot.symbol, lookback_days=lookback_days)
-    return adv, _percentage(_decimal_volume(snapshot.session_volume), adv)
+    return adv, (_decimal_volume(snapshot.session_volume) / adv) if adv is not None and adv > 0 else None
 
 
 def short_term_relative_volume(
@@ -80,7 +80,7 @@ def short_term_relative_volume(
         if bar.symbol == current_bar.symbol and bar.start_at.astimezone(_ET).time() == anchor_time
     )
     baseline = _mean(matching)
-    return _percentage(_decimal_volume(current_bar.volume), baseline)
+    return (_decimal_volume(current_bar.volume) / baseline) if baseline is not None and baseline > 0 else None
 
 
 def gap_percent(snapshot: MarketSnapshot) -> Decimal | None:

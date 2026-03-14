@@ -168,8 +168,8 @@ def test_build_market_metrics_computes_required_fields() -> None:
     )
 
     assert metrics.average_daily_volume == Decimal("1000000")
-    assert metrics.daily_relative_volume == Decimal("120")
-    assert metrics.short_term_relative_volume == Decimal("200")
+    assert metrics.daily_relative_volume == Decimal("1.2")
+    assert metrics.short_term_relative_volume == Decimal("2")
     assert metrics.gap_percent == Decimal("10.0")
     assert metrics.change_from_prior_close_percent == Decimal("20.0")
     assert metrics.pullback_from_high_percent == Decimal("4.00")
@@ -223,4 +223,4 @@ def test_short_term_relative_volume_uses_same_time_of_day_baseline() -> None:
         ),
     )
 
-    assert short_term_relative_volume(current_bar, historical_intraday_bars) == Decimal("200")
+    assert short_term_relative_volume(current_bar, historical_intraday_bars) == Decimal("2")
