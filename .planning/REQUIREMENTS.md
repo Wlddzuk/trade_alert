@@ -7,10 +7,10 @@
 
 ### Data and Universe
 
-- [ ] **DATA-01**: Operator can run the scanner against a configured universe of US-listed common stocks on NASDAQ and NYSE only.
-- [ ] **DATA-02**: Operator can rely on hard universe filters for price and average daily volume before candidates are surfaced.
-- [ ] **DATA-03**: Operator can rely on near-real-time Polygon.io market-data updates during the configured runtime window.
-- [ ] **DATA-04**: Operator can rely on near-real-time Benzinga news updates during the configured runtime window.
+- [x] **DATA-01**: Operator can run the scanner against a configured universe of US-listed common stocks on NASDAQ and NYSE only.
+- [x] **DATA-02**: Operator can rely on hard universe filters for price and average daily volume before candidates are surfaced.
+- [x] **DATA-03**: Operator can rely on near-real-time Polygon.io market-data updates during the configured runtime window.
+- [x] **DATA-04**: Operator can rely on near-real-time Benzinga news updates during the configured runtime window.
 - [ ] **DATA-05**: Operator can see time since news and a simple catalyst classification attached to surfaced candidates.
 
 ### Scanner
@@ -80,10 +80,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
+| DATA-02 | Phase 1 | Complete |
+| DATA-03 | Phase 1 | Complete |
+| DATA-04 | Phase 1 | Complete |
 | DATA-05 | Phase 2 | Pending |
 | SCAN-01 | Phase 2 | Pending |
 | SCAN-02 | Phase 2 | Pending |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-14 after Phase 1 completion*

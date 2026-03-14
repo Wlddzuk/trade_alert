@@ -10,7 +10,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Provider Foundation** - Establish provider abstractions, runtime window, freshness rules, and initial universe filtering.
+- [x] **Phase 1: Provider Foundation** - Establish provider abstractions, runtime window, freshness rules, and initial universe filtering. (completed 2026-03-14)
 - [ ] **Phase 2: Scanner Metrics and Candidate Feed** - Build the ranked scanner row pipeline and required market/news-derived fields.
 - [ ] **Phase 3: Strategy Validity and Ranking** - Add momentum pullback defaults, trigger logic, invalidations, `setup_valid`, and score/rank behavior.
 - [ ] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management.
@@ -30,9 +30,9 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: Define provider interfaces, normalized records, and feed error handling
-- [ ] 01-02: Implement runtime schedule and initial universe-filtering rules
-- [ ] 01-03: Add basic freshness tracking and health state for provider ingestion
+- [x] 01-01: Define provider interfaces, normalized records, and feed error handling
+- [x] 01-02: Implement runtime schedule and initial universe-filtering rules
+- [x] 01-03: Add basic freshness tracking and health state for provider ingestion
 
 ### Phase 2: Scanner Metrics and Candidate Feed
 **Goal**: Produce operator-usable scanner rows with the required market, news, and pullback context.
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Provider Foundation | 2/3 | In Progress|  |
+| 1. Provider Foundation | 3/3 | Complete    | 2026-03-14 |
 | 2. Scanner Metrics and Candidate Feed | 0/3 | Not started | - |
 | 3. Strategy Validity and Ranking | 0/3 | Not started | - |
 | 4. Telegram Workflow and Paper Broker | 0/4 | Not started | - |
