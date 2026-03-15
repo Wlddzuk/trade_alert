@@ -19,15 +19,15 @@
 - [x] **SCAN-02**: Operator can view daily relative volume calculated from a configurable baseline with 20-day average as the initial default.
 - [x] **SCAN-03**: Operator can view short-term relative volume using current 5-minute volume versus the 20-day time-of-day baseline.
 - [x] **SCAN-04**: Operator can view pullback % from high of day for surfaced candidates.
-- [ ] **SCAN-05**: Operator can view a current `setup_valid` status for each surfaced candidate.
-- [ ] **SCAN-06**: Operator can view a score/rank that prioritizes surfaced candidates.
+- [x] **SCAN-05**: Operator can view a current `setup_valid` status for each surfaced candidate.
+- [x] **SCAN-06**: Operator can view a score/rank that prioritizes surfaced candidates.
 
 ### Strategy and Signal Quality
 
-- [ ] **SIG-01**: Operator receives setup candidates only when recent catalyst, day move, and volume expansion pass configured defaults.
-- [ ] **SIG-02**: Operator receives setup candidates only when pullback retracement remains within the configured valid range.
-- [ ] **SIG-03**: Operator receives a trigger when price first breaks the prior candle high after a valid pullback, with 15-second data preferred and 1-minute fallback.
-- [ ] **SIG-04**: Operator does not receive a trigger when invalidation conditions are active, including stale or contradictory catalyst, weak volume, halt state, or excessive pullback.
+- [x] **SIG-01**: Operator receives setup candidates only when recent catalyst, day move, and volume expansion pass configured defaults.
+- [x] **SIG-02**: Operator receives setup candidates only when pullback retracement remains within the configured valid range.
+- [x] **SIG-03**: Operator receives a trigger when price first breaks the prior candle high after a valid pullback, with 15-second data preferred and 1-minute fallback.
+- [x] **SIG-04**: Operator does not receive a trigger when invalidation conditions are active, including stale or contradictory catalyst, weak volume, halt state, or excessive pullback.
 - [ ] **SIG-05**: Operator can rely on signals being rejected when spread, liquidity, timing, or stop-distance conditions make the setup poor quality.
 
 ### Alerts and Operator Workflow
@@ -89,12 +89,12 @@
 | SCAN-02 | Phase 2 | Complete |
 | SCAN-03 | Phase 2 | Complete |
 | SCAN-04 | Phase 2 | Complete |
-| SCAN-05 | Phase 3 | Pending |
-| SCAN-06 | Phase 3 | Pending |
-| SIG-01 | Phase 3 | Pending |
-| SIG-02 | Phase 3 | Pending |
-| SIG-03 | Phase 3 | Pending |
-| SIG-04 | Phase 3 | Pending |
+| SCAN-05 | Phase 3 | Complete |
+| SCAN-06 | Phase 3 | Complete |
+| SIG-01 | Phase 3 | Complete |
+| SIG-02 | Phase 3 | Complete |
+| SIG-03 | Phase 3 | Complete |
+| SIG-04 | Phase 3 | Complete |
 | SIG-05 | Phase 4 | Pending |
 | FLOW-01 | Phase 4 | Pending |
 | FLOW-02 | Phase 4 | Pending |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-14 after Phase 2 completion*
+*Last updated: 2026-03-15 after Phase 3 completion*
