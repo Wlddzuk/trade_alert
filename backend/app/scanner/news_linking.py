@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.providers.models import NewsEvent, normalize_symbol
 
@@ -11,6 +11,28 @@ from .models import LinkedNewsEvent
 
 def news_timestamp(event: NewsEvent) -> datetime:
     return event.updated_at or event.published_at
+
+
+def first_news_at(linked_news: LinkedNewsEvent | None) -> datetime | None:
+    if linked_news is None:
+        return None
+    first_timestamp = min((news_timestamp(event) for event in linked_news.related_events), default=None)
+    return first_timestamp.astimezone(UTC) if first_timestamp is not None else None
+
+
+def catalyst_age_seconds(
+    linked_news: LinkedNewsEvent | None,
+    *,
+    observed_at: datetime,
+) -> float | None:
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+
+    first_timestamp = first_news_at(linked_news)
+    if first_timestamp is None:
+        return None
+    age = observed_at.astimezone(UTC) - first_timestamp
+    return max(age.total_seconds(), 0.0)
 
 
 def latest_news_for_symbol(
