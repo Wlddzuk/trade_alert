@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 3 completed
-last_updated: "2026-03-15T07:34:20Z"
-last_activity: 2026-03-15 — Phase 3 Strategy Validity and Ranking completed
+stopped_at: Phase 4 context gathered
+last_updated: "2026-03-15T07:35:00Z"
+last_activity: 2026-03-15 — Phase 4 Telegram Workflow and Paper Broker context gathered
 progress:
   total_phases: 5
   completed_phases: 3
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 4 of 5 (Telegram Workflow and Paper Broker)
-Plan: Discussion not started
-Status: Ready to discuss
-Last activity: 2026-03-15 — Phase 3 Strategy Validity and Ranking completed
+Plan: Discussion complete
+Status: Ready to plan
+Last activity: 2026-03-15 — Phase 4 Telegram Workflow and Paper Broker context gathered
 
 Progress: [██████░░░░] 56%
 
@@ -76,6 +76,9 @@ Recent decisions affecting current work:
 - Phase 3 keeps strategy state layered above the Phase 2 candidate-feed contracts rather than rewriting row identity or feed lifecycle.
 - Phase 3 treats `15-second` trigger bars as preferred but supports an explicit `1-minute` fallback path through normalized provider history.
 - Phase 3 ranks strategy rows quality-first on a `0-100` scale, keeps invalid rows visible below valid ones, and projects stage tags with supporting reasons.
+- Phase 4: Telegram should surface valid setups first as watch-only alerts, then as fresh actionable alerts when they become trigger-ready.
+- Phase 4: Entry approval uses a fast default-approve path plus a separate stop/target adjustment path, with entry price staying tied to the alert proposal.
+- Phase 4: Open paper trades use automatic protective-plus-responsive exits with operator override limited to close, stop adjustment, and target adjustment, and Telegram trade messaging stays material-events-only.
 
 ### Pending Todos
 
@@ -83,10 +86,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None active — Phase 4 is ready to discuss.
+None active — Phase 4 is ready to plan.
 
 ## Session Continuity
 
-Last session: 2026-03-15T07:34:20Z
-Stopped at: Phase 3 completed
-Resume file: .planning/ROADMAP.md
+Last session: 2026-03-15T07:35:00Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-telegram-workflow-and-paper-broker/04-CONTEXT.md
