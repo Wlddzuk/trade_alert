@@ -28,12 +28,14 @@ class MarketHistoryService:
         self,
         symbols: Sequence[str],
         *,
-        interval_minutes: int = 5,
+        interval_minutes: int | None = 5,
+        interval_seconds: int | None = None,
         lookback_days: int = 20,
     ) -> ProviderBatch[IntradayBar]:
         normalized_symbols = normalize_symbols(symbols)
         return await self._provider.fetch_intraday_bars(
             normalized_symbols,
             interval_minutes=interval_minutes,
+            interval_seconds=interval_seconds,
             lookback_days=lookback_days,
         )

@@ -183,12 +183,13 @@ class IntradayBar:
     symbol: str
     provider: str
     start_at: datetime
-    interval_minutes: int
     open_price: Decimal | float | int | str
     high_price: Decimal | float | int | str
     low_price: Decimal | float | int | str
     close_price: Decimal | float | int | str
     volume: int
+    interval_minutes: int | None = None
+    interval_seconds: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "symbol", normalize_symbol(self.symbol))
@@ -198,10 +199,22 @@ class IntradayBar:
         object.__setattr__(self, "high_price", to_decimal(self.high_price, field_name="high_price"))
         object.__setattr__(self, "low_price", to_decimal(self.low_price, field_name="low_price"))
         object.__setattr__(self, "close_price", to_decimal(self.close_price, field_name="close_price"))
-        if self.interval_minutes <= 0:
+        if (self.interval_minutes is None) == (self.interval_seconds is None):
+            raise ValueError("exactly one of interval_minutes or interval_seconds must be provided")
+        if self.interval_minutes is not None and self.interval_minutes <= 0:
             raise ValueError("interval_minutes must be greater than zero")
+        if self.interval_seconds is not None and self.interval_seconds <= 0:
+            raise ValueError("interval_seconds must be greater than zero")
         if self.volume < 0:
             raise ValueError("volume must be zero or greater")
+
+    @property
+    def interval_unit(self) -> str:
+        return "second" if self.interval_seconds is not None else "minute"
+
+    @property
+    def interval_value(self) -> int:
+        return self.interval_seconds or self.interval_minutes or 0
 
 
 @dataclass(frozen=True, slots=True)

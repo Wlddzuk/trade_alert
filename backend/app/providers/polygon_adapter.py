@@ -131,13 +131,18 @@ class PolygonSnapshotProvider(MarketDataProvider):
         self,
         symbols: Sequence[str],
         *,
-        interval_minutes: int = 5,
+        interval_minutes: int | None = 5,
+        interval_seconds: int | None = None,
         lookback_days: int = 20,
     ) -> ProviderBatch[IntradayBar]:
         if lookback_days <= 0:
             raise ValueError("lookback_days must be greater than zero")
-        if interval_minutes <= 0:
+        if (interval_minutes is None) == (interval_seconds is None):
+            raise ValueError("exactly one of interval_minutes or interval_seconds must be provided")
+        if interval_minutes is not None and interval_minutes <= 0:
             raise ValueError("interval_minutes must be greater than zero")
+        if interval_seconds is not None and interval_seconds <= 0:
+            raise ValueError("interval_seconds must be greater than zero")
 
         normalized_symbols = normalize_symbols(symbols)
         if not normalized_symbols:
@@ -148,17 +153,21 @@ class PolygonSnapshotProvider(MarketDataProvider):
         received_at = self._now_fn()
         start_date = (received_at - timedelta(days=lookback_days * 2)).date().isoformat()
         end_date = received_at.date().isoformat()
+        interval_value = interval_seconds or interval_minutes or 0
+        interval_unit = "second" if interval_seconds is not None else "minute"
+        bars_per_day = 1_560 if interval_unit == "second" else 78
         bars = await self._fetch_aggregate_history(
             normalized_symbols,
             received_at=received_at,
             start_date=start_date,
             end_date=end_date,
-            path_template=f"/v2/aggs/ticker/{{symbol}}/range/{interval_minutes}/minute/{{start}}/{{end}}",
-            params={"adjusted": "true", "sort": "asc", "limit": lookback_days * 78},
+            path_template=f"/v2/aggs/ticker/{{symbol}}/range/{interval_value}/{interval_unit}/{{start}}/{{end}}",
+            params={"adjusted": "true", "sort": "asc", "limit": lookback_days * bars_per_day},
             normalizer=lambda symbol, raw_item: self._normalize_intraday_bar(
                 symbol,
                 raw_item,
                 interval_minutes=interval_minutes,
+                interval_seconds=interval_seconds,
             ),
         )
         return self._history_batch(
@@ -348,7 +357,8 @@ class PolygonSnapshotProvider(MarketDataProvider):
         symbol: str,
         raw_item: Any,
         *,
-        interval_minutes: int,
+        interval_minutes: int | None = None,
+        interval_seconds: int | None = None,
     ) -> IntradayBar:
         if not isinstance(raw_item, Mapping):
             raise ProviderPayloadError("polygon", "intraday bar item must be a mapping")
@@ -358,6 +368,7 @@ class PolygonSnapshotProvider(MarketDataProvider):
             provider=self.provider_name,
             start_at=_datetime_from_epoch_ms(raw_item.get("t"), field_name="intraday bar timestamp"),
             interval_minutes=interval_minutes,
+            interval_seconds=interval_seconds,
             open_price=raw_item.get("o"),
             high_price=raw_item.get("h"),
             low_price=raw_item.get("l"),
