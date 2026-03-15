@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-14T23:53:06Z"
-last_activity: 2026-03-14 — Phase 3 Strategy Validity and Ranking context gathered
+stopped_at: Phase 3 planned
+last_updated: "2026-03-15T07:15:40Z"
+last_activity: 2026-03-15 — Phase 3 Strategy Validity and Ranking planned
 progress:
   total_phases: 5
   completed_phases: 2
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 
 Phase: 3 of 5 (Strategy Validity and Ranking)
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-14 — Phase 3 Strategy Validity and Ranking context gathered
+Status: Ready to execute
+Last activity: 2026-03-15 — Phase 3 Strategy Validity and Ranking planned
 
 Progress: [████░░░░░░] 38%
 
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - Phase 3: `setup_valid` stays boolean with a primary invalid reason, and validity freshness is anchored to the first headline in the active catalyst cluster.
 - Phase 3: Hard context for validity is price above VWAP with `9 EMA` above `20 EMA`; pullback volume quality is only a soft preference in v1.
 - Phase 3: Ranking is a quality-first `0-100` score with valid rows above invalid ones, plus primary stage tags such as `building`, `trigger_ready`, and `invalidated`.
+- Phase 3 planning keeps strategy state layered above the Phase 2 candidate-feed contracts rather than rewriting row identity or feed lifecycle.
+- Phase 3 planning treats `15-second` trigger bars as preferred but requires an explicit `1-minute` fallback path because current normalized intraday bars are minute-based.
 
 ### Pending Todos
 
@@ -79,10 +81,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None active — Phase 3 context is ready for planning.
+None active — Phase 3 is ready to execute.
 
 ## Session Continuity
 
-Last session: 2026-03-14T23:53:06Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-strategy-validity-and-ranking/03-CONTEXT.md
+Last session: 2026-03-15T07:15:40Z
+Stopped at: Phase 3 planned
+Resume file: .planning/phases/03-strategy-validity-and-ranking/03-01-PLAN.md
