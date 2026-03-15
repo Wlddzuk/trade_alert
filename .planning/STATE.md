@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 2 completed and verified
-last_updated: "2026-03-14T22:03:06Z"
-last_activity: 2026-03-14 — Phase 2 Scanner Metrics and Candidate Feed completed and verified
+stopped_at: Phase 3 context gathered
+last_updated: "2026-03-14T23:53:06Z"
+last_activity: 2026-03-14 — Phase 3 Strategy Validity and Ranking context gathered
 progress:
   total_phases: 5
   completed_phases: 2
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 
 Phase: 3 of 5 (Strategy Validity and Ranking)
 Plan: Not started
-Status: Ready to discuss
-Last activity: 2026-03-14 — Phase 2 Scanner Metrics and Candidate Feed completed and verified
+Status: Ready to plan
+Last activity: 2026-03-14 — Phase 3 Strategy Validity and Ranking context gathered
 
 Progress: [████░░░░░░] 38%
 
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - Phase 2: Scanner rows stay symbol-centric, with the latest related headline driving the displayed catalyst tag and time-since-news value.
 - Phase 2: Daily RVOL uses ratio-based x-multipliers and short-term RVOL uses same-time-of-day 5-minute baselines.
 - Phase 2: The live candidate feed is unified across premarket and the open, ordered by freshest news then % move, and suppressed when trust is non-actionable.
+- Phase 3: `setup_valid` stays boolean with a primary invalid reason, and validity freshness is anchored to the first headline in the active catalyst cluster.
+- Phase 3: Hard context for validity is price above VWAP with `9 EMA` above `20 EMA`; pullback volume quality is only a soft preference in v1.
+- Phase 3: Ranking is a quality-first `0-100` score with valid rows above invalid ones, plus primary stage tags such as `building`, `trigger_ready`, and `invalidated`.
 
 ### Pending Todos
 
@@ -76,11 +79,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- Score/rank design still needs an explicit v1 model for Phase 3.
-- Soft trade-quality definitions still need measurable wording for momentum integrity, poor follow-through, and late-in-move rejection.
+None active — Phase 3 context is ready for planning.
 
 ## Session Continuity
 
-Last session: 2026-03-14T22:03:06Z
-Stopped at: Phase 2 completed and verified
-Resume file: .planning/ROADMAP.md
+Last session: 2026-03-14T23:53:06Z
+Stopped at: Phase 3 context gathered
+Resume file: .planning/phases/03-strategy-validity-and-ranking/03-CONTEXT.md
