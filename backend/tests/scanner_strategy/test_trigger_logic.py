@@ -8,6 +8,7 @@ from app.providers.polygon_adapter import PolygonSnapshotProvider
 from app.providers.models import IntradayBar, ProviderCapability, ProviderHealthState
 from app.scanner.history import MarketHistoryService
 from app.scanner.trigger_policy import resolve_trigger_bars
+from app.scanner.trigger_logic import evaluate_first_break_trigger
 
 
 def test_polygon_provider_normalizes_15_second_bars_through_history_service(
@@ -82,3 +83,50 @@ def test_resolve_trigger_bars_prefers_15_second_and_falls_back_to_1_minute() -> 
     assert fallback_only.interval_seconds == 60
     assert fallback_only.used_fallback is True
     assert fallback_only.bars == fallback
+
+
+def test_evaluate_first_break_trigger_uses_first_intrabar_break_without_requiring_bullish_close() -> None:
+    bars = (
+        IntradayBar(
+            symbol="AAPL",
+            provider="polygon",
+            start_at=datetime(2026, 3, 14, 13, 35, tzinfo=UTC),
+            interval_seconds=15,
+            open_price="10.00",
+            high_price="10.20",
+            low_price="9.90",
+            close_price="10.10",
+            volume=5_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="polygon",
+            start_at=datetime(2026, 3, 14, 13, 35, 15, tzinfo=UTC),
+            interval_seconds=15,
+            open_price="10.30",
+            high_price="10.40",
+            low_price="10.00",
+            close_price="10.15",
+            volume=6_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="polygon",
+            start_at=datetime(2026, 3, 14, 13, 35, 30, tzinfo=UTC),
+            interval_seconds=15,
+            open_price="10.10",
+            high_price="10.35",
+            low_price="10.00",
+            close_price="10.30",
+            volume=7_000,
+        ),
+    )
+    selection = resolve_trigger_bars(preferred_bars=bars, fallback_bars=())
+
+    evaluation = evaluate_first_break_trigger(selection)
+
+    assert evaluation.triggered is True
+    assert evaluation.trigger_price == bars[0].high_price
+    assert evaluation.trigger_bar_started_at == bars[1].start_at
+    assert evaluation.interval_seconds == 15
+    assert evaluation.bullish_confirmation is False
