@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
 from app.ops.health_models import SystemTrustSnapshot
 
 from .feed_store import CandidateFeedStore
 from .models import CandidateRow
+
+if TYPE_CHECKING:
+    from .strategy_projection import StrategyProjection
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +62,23 @@ class CandidateFeedService:
                 key=lambda row: (
                     row.latest_news_at,
                     row.change_from_prior_close_percent or Decimal("-1"),
+                ),
+                reverse=True,
+            )
+        )
+
+    def order_strategy_rows(
+        self,
+        rows: Iterable["StrategyProjection"],
+    ) -> tuple["StrategyProjection", ...]:
+        return tuple(
+            sorted(
+                rows,
+                key=lambda projection: (
+                    projection.is_valid,
+                    projection.score,
+                    projection.row.latest_news_at,
+                    projection.row.change_from_prior_close_percent or Decimal("-1"),
                 ),
                 reverse=True,
             )
