@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from app.providers.models import normalize_symbol
+from app.risk.models import EntryDisposition, EntryEligibility, SessionGuardDecision, TradeGateDecision
 
 from .models import OpenTradeSnapshot, PreEntryAlert, PreEntryAlertState, TradeProposal
 
@@ -213,4 +214,75 @@ def adjust_trade_target(
         symbol=trade.symbol,
         decided_at=decided_at or trade.opened_at,
         new_target_price=str(new_target_price),
+    )
+
+
+def combine_entry_eligibility(
+    trade_gates: TradeGateDecision,
+    session_guard: SessionGuardDecision,
+) -> EntryEligibility:
+    if not trade_gates.passed:
+        return EntryEligibility(
+            disposition=EntryDisposition.REJECTED,
+            reason=trade_gates.reason,
+        )
+    if not session_guard.allowed:
+        return EntryEligibility(
+            disposition=EntryDisposition.BLOCKED,
+            reason=session_guard.reason,
+            blocked_until=session_guard.blocked_until,
+        )
+    return EntryEligibility(
+        disposition=EntryDisposition.ACTIONABLE,
+        position_size=trade_gates.position_size,
+    )
+
+
+def project_trigger_ready_alert(
+    alert_projection,
+    proposal: TradeProposal,
+    *,
+    rank: int,
+    eligibility: EntryEligibility,
+    surfaced_at: datetime | None = None,
+) -> PreEntryAlert:
+    if eligibility.disposition is EntryDisposition.ACTIONABLE:
+        state = PreEntryAlertState.ACTIONABLE
+        status_reason = None
+    elif eligibility.disposition is EntryDisposition.BLOCKED:
+        state = PreEntryAlertState.BLOCKED
+        status_reason = eligibility.reason.value if eligibility.reason is not None else None
+    else:
+        state = PreEntryAlertState.REJECTED
+        status_reason = eligibility.reason.value if eligibility.reason is not None else None
+    return PreEntryAlert(
+        state=state,
+        projection=alert_projection,
+        proposal=proposal,
+        rank=rank,
+        surfaced_at=surfaced_at or alert_projection.row.observed_at,
+        status_reason=status_reason,
+    )
+
+
+def record_pre_entry_alert(log, alert: PreEntryAlert):
+    from app.audit.lifecycle_log import record_pre_entry_alert as record_alert_event
+
+    return record_alert_event(log, alert)
+
+
+def record_entry_decision(log, decision: EntryDecision):
+    from app.audit.lifecycle_log import record_entry_decision as record_decision_event
+
+    return record_decision_event(log, decision)
+
+
+def record_open_trade_command(log, command: OpenTradeCommand, *, stop_price=None, target_price=None):
+    from app.audit.lifecycle_log import record_trade_command
+
+    return record_trade_command(
+        log,
+        command,
+        stop_price=stop_price,
+        target_price=target_price,
     )
