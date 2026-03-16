@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 4 planned
-last_updated: "2026-03-15T07:36:00Z"
-last_activity: 2026-03-15 — Phase 4 Telegram Workflow and Paper Broker planned
+stopped_at: Phase 4 complete
+last_updated: "2026-03-16T00:41:27Z"
+last_activity: 2026-03-16 — Phase 4 complete and verified
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
-  completed_plans: 9
-  percent: 56
+  completed_plans: 13
+  percent: 81
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** Surface high-quality, news-driven momentum pullback opportunities early enough, with enough context and risk structure, that the operator can make faster and more consistent paper-trading decisions.
-**Current focus:** Phase 4: Telegram Workflow and Paper Broker
+**Current focus:** Phase 5: Monitoring, Audit, and Review Surface
 
 ## Current Position
 
-Phase: 4 of 5 (Telegram Workflow and Paper Broker)
-Plan: 04-01 ready to execute
-Status: Ready to execute
-Last activity: 2026-03-15 — Phase 4 Telegram Workflow and Paper Broker planned
+Phase: 5 of 5 (Monitoring, Audit, and Review Surface)
+Plan: discuss phase 5
+Status: Ready for next phase
+Last activity: 2026-03-16 — Phase 4 complete and verified
 
-Progress: [██████░░░░] 56%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 3.1 min
-- Total execution time: 0.5 hours
+- Total plans completed: 13
+- Average duration: 5.5 min
+- Total execution time: 1.2 hours
 
 **By Phase:**
 
@@ -46,9 +46,10 @@ Progress: [██████░░░░] 56%
 | 1 | 3 | 7 min | 2.3 min |
 | 2 | 3 | 8 min | 2.7 min |
 | 3 | 3 | 10 min | 3.3 min |
+| 4 | 4 | 55 min | 13.8 min |
 
 **Recent Trend:**
-- Last 5 plans: 3 min, 2 min, 2 min, 3 min, 5 min
+- Last 5 plans: 20 min, 18 min, 17 min, 14 min, 15 min
 - Trend: Stable
 
 ## Accumulated Context
@@ -79,6 +80,10 @@ Recent decisions affecting current work:
 - Phase 4: Telegram should surface valid setups first as watch-only alerts, then as fresh actionable alerts when they become trigger-ready.
 - Phase 4: Entry approval uses a fast default-approve path plus a separate stop/target adjustment path, with entry price staying tied to the alert proposal.
 - Phase 4: Open paper trades use automatic protective-plus-responsive exits with operator override limited to close, stop adjustment, and target adjustment, and Telegram trade messaging stays material-events-only.
+- Phase 4 execution: watched setups now emit a fresh actionable alert when they become trigger-ready, blocked/rejected follow-ups stay limited to already-surfaced symbols, and Telegram controls are explicit for actionable entry plus open-trade close/adjust actions.
+- Phase 4 execution: paper trades now use configurable slippage, optional partial-fill support, deterministic protective-plus-responsive exits, and a conservative stop-first rule on ambiguous bars.
+- Phase 4 execution: one shared eligibility contract now drives both trigger-ready alert actionability and final paper-trade opens across spread, liquidity, stop-distance, cutoff, cooldown, max-position, and max-loss rules.
+- Phase 4 execution: lifecycle storage is append-only and UTC-safe, and trade review can be reconstructed from lifecycle events instead of mutable broker state.
 
 ### Pending Todos
 
@@ -86,10 +91,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None active — Phase 4 is ready to execute.
+None active — ready for Phase 5 discussion.
 
 ## Session Continuity
 
-Last session: 2026-03-15T07:36:00Z
-Stopped at: Phase 4 planned
-Resume file: .planning/phases/04-telegram-workflow-and-paper-broker/04-01-PLAN.md
+Last session: 2026-03-16T00:41:27Z
+Stopped at: Phase 4 complete
+Resume file: .planning/ROADMAP.md

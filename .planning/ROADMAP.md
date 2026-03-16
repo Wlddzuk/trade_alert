@@ -13,7 +13,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 1: Provider Foundation** - Establish provider abstractions, runtime window, freshness rules, and initial universe filtering. (completed 2026-03-14)
 - [x] **Phase 2: Scanner Metrics and Candidate Feed** - Build the scanner row pipeline, live candidate feed state, and required market/news-derived fields. (completed 2026-03-14)
 - [x] **Phase 3: Strategy Validity and Ranking** - Add momentum pullback defaults, trigger logic, invalidations, `setup_valid`, and score/rank behavior. (completed 2026-03-15)
-- [ ] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management.
+- [x] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management. (completed 2026-03-16)
 - [ ] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries.
 
 ## Phase Details
@@ -78,10 +78,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01: Build Telegram alert delivery and approval workflow
-- [ ] 04-02: Implement paper broker state model, entry handling, and exit handling
-- [ ] 04-03: Implement risk controls, trade rejection, and cooldown behavior
-- [ ] 04-04: Persist full paper-trade lifecycle events for downstream review
+- [x] 04-01: Build Telegram alert delivery and approval workflow
+- [x] 04-02: Implement paper broker state model, entry handling, and exit handling
+- [x] 04-03: Implement risk controls, trade rejection, and cooldown behavior
+- [x] 04-04: Persist full paper-trade lifecycle events for downstream review
 
 ### Phase 5: Monitoring, Audit, and Review Surface
 **Goal**: Make the system trustworthy in use through degraded-state handling, audit review, and a read-only operator dashboard.
@@ -109,5 +109,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Provider Foundation | 3/3 | Complete    | 2026-03-14 |
 | 2. Scanner Metrics and Candidate Feed | 3/3 | Complete    | 2026-03-14 |
 | 3. Strategy Validity and Ranking | 3/3 | Complete    | 2026-03-15 |
-| 4. Telegram Workflow and Paper Broker | 0/4 | Not started | - |
+| 4. Telegram Workflow and Paper Broker | 4/4 | Complete | 2026-03-16 |
 | 5. Monitoring, Audit, and Review Surface | 0/3 | Not started | - |

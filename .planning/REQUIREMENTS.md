@@ -28,26 +28,26 @@
 - [x] **SIG-02**: Operator receives setup candidates only when pullback retracement remains within the configured valid range.
 - [x] **SIG-03**: Operator receives a trigger when price first breaks the prior candle high after a valid pullback, with 15-second data preferred and 1-minute fallback.
 - [x] **SIG-04**: Operator does not receive a trigger when invalidation conditions are active, including stale or contradictory catalyst, weak volume, halt state, or excessive pullback.
-- [ ] **SIG-05**: Operator can rely on signals being rejected when spread, liquidity, timing, or stop-distance conditions make the setup poor quality.
+- [x] **SIG-05**: Operator can rely on signals being rejected when spread, liquidity, timing, or stop-distance conditions make the setup poor quality.
 
 ### Alerts and Operator Workflow
 
-- [ ] **FLOW-01**: Operator receives qualifying setup alerts in Telegram.
-- [ ] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
-- [ ] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
-- [ ] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
-- [ ] **FLOW-05**: Operator can override exit behavior at any time.
+- [x] **FLOW-01**: Operator receives qualifying setup alerts in Telegram.
+- [x] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
+- [x] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
+- [x] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
+- [x] **FLOW-05**: Operator can override exit behavior at any time.
 - [ ] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
 
 ### Risk and Paper Trading
 
-- [ ] **RISK-01**: Operator sizes paper entries using fixed % risk of paper account equity.
-- [ ] **RISK-02**: Operator cannot enter a paper trade without a required stop.
-- [ ] **RISK-03**: Operator cannot exceed max daily loss or max open position limits in v1.
-- [ ] **RISK-04**: Operator cannot open new entries after the configured cutoff time.
-- [ ] **RISK-05**: Operator is subject to cooldown rules after losses and consecutive losses.
-- [ ] **RISK-06**: Paper fills simulate configured slippage assumptions.
-- [ ] **RISK-07**: Paper broker architecture supports optional partial-fill simulation even if disabled by default.
+- [x] **RISK-01**: Operator sizes paper entries using fixed % risk of paper account equity.
+- [x] **RISK-02**: Operator cannot enter a paper trade without a required stop.
+- [x] **RISK-03**: Operator cannot exceed max daily loss or max open position limits in v1.
+- [x] **RISK-04**: Operator cannot open new entries after the configured cutoff time.
+- [x] **RISK-05**: Operator is subject to cooldown rules after losses and consecutive losses.
+- [x] **RISK-06**: Paper fills simulate configured slippage assumptions.
+- [x] **RISK-07**: Paper broker architecture supports optional partial-fill simulation even if disabled by default.
 
 ### Monitoring and Audit
 
@@ -95,20 +95,20 @@
 | SIG-02 | Phase 3 | Complete |
 | SIG-03 | Phase 3 | Complete |
 | SIG-04 | Phase 3 | Complete |
-| SIG-05 | Phase 4 | Pending |
-| FLOW-01 | Phase 4 | Pending |
-| FLOW-02 | Phase 4 | Pending |
-| FLOW-03 | Phase 4 | Pending |
-| FLOW-04 | Phase 4 | Pending |
-| FLOW-05 | Phase 4 | Pending |
+| SIG-05 | Phase 4 | Complete |
+| FLOW-01 | Phase 4 | Complete |
+| FLOW-02 | Phase 4 | Complete |
+| FLOW-03 | Phase 4 | Complete |
+| FLOW-04 | Phase 4 | Complete |
+| FLOW-05 | Phase 4 | Complete |
 | FLOW-06 | Phase 5 | Pending |
-| RISK-01 | Phase 4 | Pending |
-| RISK-02 | Phase 4 | Pending |
-| RISK-03 | Phase 4 | Pending |
-| RISK-04 | Phase 4 | Pending |
-| RISK-05 | Phase 4 | Pending |
-| RISK-06 | Phase 4 | Pending |
-| RISK-07 | Phase 4 | Pending |
+| RISK-01 | Phase 4 | Complete |
+| RISK-02 | Phase 4 | Complete |
+| RISK-03 | Phase 4 | Complete |
+| RISK-04 | Phase 4 | Complete |
+| RISK-05 | Phase 4 | Complete |
+| RISK-06 | Phase 4 | Complete |
+| RISK-07 | Phase 4 | Complete |
 | OPS-01 | Phase 5 | Pending |
 | OPS-02 | Phase 5 | Pending |
 | OPS-03 | Phase 5 | Pending |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-15 after Phase 3 completion*
+*Last updated: 2026-03-16 after Phase 4 completion*
