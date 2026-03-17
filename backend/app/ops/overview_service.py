@@ -6,7 +6,7 @@ from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
 from app.ops.system_events import SystemEvent
 
 from .alert_delivery_health import AlertDeliveryFailure, AlertFailureLog, build_alert_failure_log
-from .incident_log import IncidentLogReport, IncidentLogService, IncidentLogView, build_incident_log
+from .incident_log import IncidentLogView, build_incident_log
 from .monitoring_models import (
     AlertDeliveryHealth,
     AlertDeliverySnapshot,
@@ -21,9 +21,6 @@ from .monitoring_models import (
 
 
 class OperationsOverviewService:
-    def __init__(self, incident_log_service: IncidentLogService | None = None) -> None:
-        self._incident_log_service = incident_log_service or IncidentLogService()
-
     def build_overview(
         self,
         trust_snapshot: SystemTrustSnapshot,
@@ -51,19 +48,6 @@ class OperationsOverviewService:
         limit: int = 10,
     ) -> IncidentLogView:
         return build_incident_log(tuple(events), limit=limit)
-
-    def build_recent_incident_report(
-        self,
-        events: Iterable[SystemEvent],
-        *,
-        delivery_report=None,
-        limit: int = 5,
-    ) -> IncidentLogReport:
-        return self._incident_log_service.build(
-            tuple(events),
-            delivery_report=delivery_report,
-            limit=limit,
-        )
 
     def build_alert_failure_log(
         self,
