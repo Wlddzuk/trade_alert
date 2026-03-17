@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 5 context captured
-last_updated: "2026-03-16T01:02:00Z"
-last_activity: 2026-03-16 — Phase 5 context gathered
+stopped_at: Phase 5 planned
+last_updated: "2026-03-17T02:42:14Z"
+last_activity: 2026-03-17 — Phase 5 planned
 progress:
   total_phases: 5
   completed_phases: 4
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 5 of 5 (Monitoring, Audit, and Review Surface)
-Plan: plan phase 5
-Status: Ready for planning
-Last activity: 2026-03-16 — Phase 5 context gathered
+Plan: 05-01 ready to execute
+Status: Ready for execution
+Last activity: 2026-03-17 — Phase 5 planned
 
 Progress: [████████░░] 81%
 
@@ -88,6 +88,8 @@ Recent decisions affecting current work:
 - Phase 5: the secondary dashboard stays explicitly read-only, status-first, summary-first, and sectioned into overview, logs, trade review, and P&L.
 - Phase 5: completed trades should review by trading day with summary-first drill-down, and raw lifecycle events should stay secondary to the human-readable review.
 - Phase 5: paper P&L should emphasize today's realized results first, with cumulative-to-date secondary and day-by-day history rather than chart-first analytics.
+- Phase 5 planning: keep the dashboard thin and backend-served in v1 so the final milestone consumes the existing Python backend seams rather than introducing a second app as hidden scope.
+- Phase 5 planning: split execution into parallel ops-read-model and audit/P&L-read-model waves, then compose both into the final read-only dashboard surface.
 
 ### Pending Todos
 
@@ -95,10 +97,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None active — ready for Phase 5 planning.
+None active — ready for Phase 5 execution.
 
 ## Session Continuity
 
-Last session: 2026-03-16T01:02:00Z
-Stopped at: Phase 5 context captured
-Resume file: .planning/phases/05-monitoring-audit-and-review-surface/05-CONTEXT.md
+Last session: 2026-03-17T02:42:14Z
+Stopped at: Phase 5 planned
+Resume file: .planning/phases/05-monitoring-audit-and-review-surface/05-01-PLAN.md
