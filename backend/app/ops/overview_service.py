@@ -1,83 +1,126 @@
 from __future__ import annotations
 
-from .health_models import SystemTrustSnapshot, SystemTrustState
+from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
+
 from .monitoring_models import (
-    AlertDeliveryStatus,
-    HealthSeverity,
-    MonitoringStatus,
-    ProviderFreshnessOverview,
+    AlertDeliveryHealth,
+    AlertDeliverySnapshot,
+    AlertDeliveryState,
+    OperationsOverview,
+    OperationsStatus,
     ScannerLoopHealth,
-    StatusOverview,
+    ScannerLoopSnapshot,
+    ScannerLoopState,
+    build_provider_freshness_views,
 )
-from .system_events import SystemEvent
 
 
-class OverviewService:
-    def build_status_overview(
+class OperationsOverviewService:
+    def build_overview(
         self,
-        snapshot: SystemTrustSnapshot,
+        trust_snapshot: SystemTrustSnapshot,
         *,
-        scanner_loop: ScannerLoopHealth,
-        alert_delivery: AlertDeliveryStatus,
-        recent_events: tuple[SystemEvent, ...] = (),
-    ) -> StatusOverview:
-        del recent_events
-
-        runtime_state = snapshot.runtime_state
-        if not runtime_state.scanning_active:
-            status = MonitoringStatus.OFFLINE
-            headline = "Session closed; monitoring is offline."
-            scanner_status = self._offline_scanner_loop(scanner_loop)
-        elif snapshot.trust_state is SystemTrustState.DEGRADED:
-            status = MonitoringStatus.DEGRADED
-            headline = "Monitoring degraded; actionable output remains blocked."
-            scanner_status = scanner_loop
-        elif snapshot.trust_state is SystemTrustState.RECOVERING:
-            status = MonitoringStatus.RECOVERING
-            headline = "Providers recovered; trust is still reconfirming."
-            scanner_status = scanner_loop
-        else:
-            status = MonitoringStatus.HEALTHY
-            headline = "Monitoring healthy and actionable."
-            scanner_status = scanner_loop
-
-        return StatusOverview(
-            observed_at=snapshot.observed_at,
+        scanner_loop: ScannerLoopSnapshot | None = None,
+        alert_delivery: AlertDeliverySnapshot | None = None,
+    ) -> OperationsOverview:
+        status = self._status_from_snapshot(trust_snapshot)
+        return OperationsOverview(
+            observed_at=trust_snapshot.observed_at,
             status=status,
-            actionable=snapshot.actionable,
-            headline=headline,
-            session_label=runtime_state.phase.value,
-            trust_state=snapshot.trust_state,
-            trust_reasons=snapshot.reasons,
-            stale_context_visible=status in {MonitoringStatus.DEGRADED, MonitoringStatus.RECOVERING},
-            provider_freshness=tuple(
-                ProviderFreshnessOverview(
-                    provider=status_snapshot.provider,
-                    capability=status_snapshot.capability.value,
-                    freshness_age_seconds=status_snapshot.snapshot.freshness_age_seconds,
-                    threshold_seconds=status_snapshot.threshold_seconds,
-                    stale=status_snapshot.stale,
-                    status=self._provider_severity(status_snapshot.stale, runtime_state.scanning_active),
-                    reason=status_snapshot.reason,
-                )
-                for status_snapshot in snapshot.provider_statuses
-            ),
-            scanner_loop=scanner_status,
-            alert_delivery=alert_delivery,
+            headline=self._headline_for(status),
+            actionable=trust_snapshot.actionable,
+            runtime_phase=trust_snapshot.runtime_state.phase,
+            provider_freshness=build_provider_freshness_views(trust_snapshot.provider_statuses),
+            scanner_loop=self._build_scanner_loop_health(scanner_loop, trust_snapshot),
+            alert_delivery=self._build_alert_delivery_health(alert_delivery, trust_snapshot),
+            trust_reasons=trust_snapshot.reasons,
         )
 
-    def _offline_scanner_loop(self, scanner_loop: ScannerLoopHealth) -> ScannerLoopHealth:
+    def _status_from_snapshot(self, snapshot: SystemTrustSnapshot) -> OperationsStatus:
+        if not snapshot.runtime_state.scanning_active:
+            return OperationsStatus.OFFLINE
+        if snapshot.trust_state is SystemTrustState.DEGRADED:
+            return OperationsStatus.DEGRADED
+        if snapshot.trust_state is SystemTrustState.RECOVERING:
+            return OperationsStatus.RECOVERING
+        return OperationsStatus.HEALTHY
+
+    def _headline_for(self, status: OperationsStatus) -> str:
+        if status is OperationsStatus.OFFLINE:
+            return "Session closed. Monitoring idle during offline."
+        if status is OperationsStatus.DEGRADED:
+            return "Degraded trust. Monitoring is visible but actionability stays blocked."
+        if status is OperationsStatus.RECOVERING:
+            return "Providers recovered. Monitoring remains in confirmation mode."
+        return "System healthy. Monitoring is actionable."
+
+    def _build_scanner_loop_health(
+        self,
+        snapshot: ScannerLoopSnapshot | None,
+        trust_snapshot: SystemTrustSnapshot,
+    ) -> ScannerLoopHealth:
+        if not trust_snapshot.runtime_state.scanning_active:
+            return ScannerLoopHealth(
+                state=ScannerLoopState.IDLE,
+                summary="Scanner loop idle outside the runtime window.",
+                last_success_at=None if snapshot is None else snapshot.last_success_at,
+                idle_seconds=None,
+                last_error=None if snapshot is None else snapshot.last_error,
+            )
+        if snapshot is None or snapshot.last_success_at is None:
+            return ScannerLoopHealth(
+                state=ScannerLoopState.STALE,
+                summary="Scanner loop heartbeat missing during the active session.",
+                last_success_at=None,
+                idle_seconds=None,
+                last_error=None if snapshot is None else snapshot.last_error,
+            )
+
+        idle_seconds = (trust_snapshot.observed_at - snapshot.last_success_at).total_seconds()
+        if idle_seconds > snapshot.max_idle_seconds:
+            return ScannerLoopHealth(
+                state=ScannerLoopState.STALE,
+                summary="Scanner loop heartbeat is stale.",
+                last_success_at=snapshot.last_success_at,
+                idle_seconds=idle_seconds,
+                last_error=snapshot.last_error,
+            )
         return ScannerLoopHealth(
-            observed_at=scanner_loop.observed_at,
-            last_iteration_at=scanner_loop.last_iteration_at,
-            lag_seconds=scanner_loop.lag_seconds,
-            status=HealthSeverity.OFFLINE,
-            summary="Scanner idle outside the runtime window.",
+            state=ScannerLoopState.RUNNING,
+            summary="Scanner loop heartbeat is healthy.",
+            last_success_at=snapshot.last_success_at,
+            idle_seconds=idle_seconds,
+            last_error=snapshot.last_error,
         )
 
-    def _provider_severity(self, stale: bool, scanning_active: bool) -> HealthSeverity:
-        if not scanning_active:
-            return HealthSeverity.OFFLINE
-        if stale:
-            return HealthSeverity.CRITICAL
-        return HealthSeverity.HEALTHY
+    def _build_alert_delivery_health(
+        self,
+        snapshot: AlertDeliverySnapshot | None,
+        trust_snapshot: SystemTrustSnapshot,
+    ) -> AlertDeliveryHealth:
+        if not trust_snapshot.runtime_state.scanning_active:
+            return AlertDeliveryHealth(
+                state=AlertDeliveryState.OFFLINE,
+                summary="Alert delivery idle outside the runtime window.",
+                consecutive_failures=0 if snapshot is None else snapshot.consecutive_failures,
+                last_attempt_at=None if snapshot is None else snapshot.last_attempt_at,
+                last_success_at=None if snapshot is None else snapshot.last_success_at,
+                last_failure_reason=None if snapshot is None else snapshot.last_failure_reason,
+            )
+        if snapshot is None or snapshot.consecutive_failures == 0:
+            return AlertDeliveryHealth(
+                state=AlertDeliveryState.HEALTHY,
+                summary="Alert delivery healthy.",
+                consecutive_failures=0 if snapshot is None else snapshot.consecutive_failures,
+                last_attempt_at=None if snapshot is None else snapshot.last_attempt_at,
+                last_success_at=None if snapshot is None else snapshot.last_success_at,
+                last_failure_reason=None if snapshot is None else snapshot.last_failure_reason,
+            )
+        return AlertDeliveryHealth(
+            state=AlertDeliveryState.DEGRADED,
+            summary="Alert delivery failures detected.",
+            consecutive_failures=snapshot.consecutive_failures,
+            last_attempt_at=snapshot.last_attempt_at,
+            last_success_at=snapshot.last_success_at,
+            last_failure_reason=snapshot.last_failure_reason,
+        )
