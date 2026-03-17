@@ -14,7 +14,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 2: Scanner Metrics and Candidate Feed** - Build the scanner row pipeline, live candidate feed state, and required market/news-derived fields. (completed 2026-03-14)
 - [x] **Phase 3: Strategy Validity and Ranking** - Add momentum pullback defaults, trigger logic, invalidations, `setup_valid`, and score/rank behavior. (completed 2026-03-15)
 - [x] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management. (completed 2026-03-16)
-- [ ] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries.
+- [ ] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries. (in progress)
 
 ## Phase Details
 
@@ -95,7 +95,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: Implement degraded-state logic and operational monitoring surfaces
+- [x] 05-01: Implement degraded-state logic and operational monitoring surfaces
 - [ ] 05-02: Implement immutable audit review and paper P&L summaries
 - [ ] 05-03: Implement the secondary read-only dashboard for status, logs, and trade review
 
@@ -110,4 +110,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Scanner Metrics and Candidate Feed | 3/3 | Complete    | 2026-03-14 |
 | 3. Strategy Validity and Ranking | 3/3 | Complete    | 2026-03-15 |
 | 4. Telegram Workflow and Paper Broker | 4/4 | Complete | 2026-03-16 |
-| 5. Monitoring, Audit, and Review Surface | 0/3 | Not started | - |
+| 5. Monitoring, Audit, and Review Surface | 1/3 | In Progress | - |
