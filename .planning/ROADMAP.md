@@ -96,7 +96,7 @@ Plans:
 
 Plans:
 - [x] 05-01: Implement degraded-state logic and operational monitoring surfaces
-- [ ] 05-02: Implement immutable audit review and paper P&L summaries
+- [x] 05-02: Implement immutable audit review and paper P&L summaries
 - [ ] 05-03: Implement the secondary read-only dashboard for status, logs, and trade review
 
 ## Progress
@@ -110,4 +110,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Scanner Metrics and Candidate Feed | 3/3 | Complete    | 2026-03-14 |
 | 3. Strategy Validity and Ranking | 3/3 | Complete    | 2026-03-15 |
 | 4. Telegram Workflow and Paper Broker | 4/4 | Complete | 2026-03-16 |
-| 5. Monitoring, Audit, and Review Surface | 1/3 | In Progress | - |
+| 5. Monitoring, Audit, and Review Surface | 2/3 | In Progress | - |
