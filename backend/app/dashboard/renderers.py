@@ -33,6 +33,7 @@ def _render_header(page: DashboardPageModel) -> str:
         "    <header>"
         f"<p>{escape(page.overview.read_only_label)}</p>"
         f"<p>{escape(page.overview.primary_workflow_label)}</p>"
+        "<nav>Overview | Logs | Trade Review | Paper P&amp;L</nav>"
         "</header>"
     )
 
@@ -85,6 +86,7 @@ def _render_logs(page: DashboardPageModel) -> str:
     return (
         "    <section id='logs'>"
         "<h2>Logs</h2>"
+        "<p>Observational only. Recent issues stay separate from the landing overview.</p>"
         "<h3>Recent critical issues</h3>"
         f"<ul>{critical}</ul>"
         "<h3>Recently resolved incidents</h3>"
@@ -117,7 +119,13 @@ def _render_trade_review(page: DashboardPageModel) -> str:
             f"<ul>{trades}</ul>"
             "</section>"
         )
-    return "    <section id='trade-review'><h2>Trade Review</h2>" + "".join(groups) + "</section>"
+    return (
+        "    <section id='trade-review'>"
+        "<h2>Trade Review</h2>"
+        "<p>Summary-first trade review with raw lifecycle events kept secondary.</p>"
+        + "".join(groups)
+        + "</section>"
+    )
 
 
 def _render_pnl(page: DashboardPageModel) -> str:
