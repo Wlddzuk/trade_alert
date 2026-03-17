@@ -1,105 +1,90 @@
 ---
 phase: 05-monitoring-audit-and-review-surface
 plan: 03
-subsystem: ui
-tags: [dashboard, read-only, html, status-overview, review]
+subsystem: dashboard
+tags: [dashboard, read-only, ops-review, trade-review, pnl]
 requires:
-  - phase: 05-monitoring-audit-and-review-surface
-    provides: ops overview, incident history, audit review feed, and pnl summaries
+  - phase: 05-01
+    provides: operations overview and incident-report read models
+  - phase: 05-02
+    provides: trade-review feed and realized-first P&L summary services
 provides:
-  - backend-rendered read-only dashboard overview
-  - separate logs, trade review, and paper P&L sections
-  - explicit read-only cues with no trade-control affordances
-affects: [operator-dashboard, flow-06, review-surface]
+  - backend-served read-only dashboard routes
+  - status-first overview with separate logs, trade review, and P&L sections
+  - explicit secondary-surface cues that keep Telegram primary
+affects: [operator-dashboard, phase-05-complete, flow-06]
 tech-stack:
   added: []
-  patterns: [thin backend rendering, sectioned read-only surface, summary-first html composition]
+  patterns: [thin route composition, server-rendered read-only sections, summary-first review surfaces]
 key-files:
-  created: [backend/app/main.py, backend/app/api/dashboard_models.py, backend/app/api/dashboard_routes.py, backend/app/dashboard/renderers.py, backend/tests/dashboard/test_dashboard_overview.py, backend/tests/dashboard/test_dashboard_review_and_logs.py]
-  modified: [backend/app/ops/incident_log.py]
+  created: [backend/app/api/dashboard_models.py, backend/app/api/dashboard_routes.py, backend/app/dashboard/__init__.py, backend/tests/dashboard/test_dashboard_overview.py, backend/tests/dashboard/test_dashboard_review_and_logs.py]
+  modified: [backend/app/main.py, backend/app/api/__init__.py, backend/app/dashboard/renderers.py]
 key-decisions:
-  - "The Phase 5 dashboard stays dependency-light and backend-rendered instead of introducing a new frontend stack in the final milestone."
-  - "Read-only cues and omitted control elements are enforced in the rendered output and tested directly."
+  - "The dashboard remains backend-served and explicitly read-only so Telegram stays the primary workflow surface in v1."
+  - "Logs, trade review, and P&L stay as separate observational sections under a status-first overview instead of becoming control surfaces."
 patterns-established:
-  - "Dashboard composition pattern: routes build page models from Phase 5 read models, then render summary-first HTML sections."
-  - "Read-only surface pattern: overview first, logs/review/P&L second, and no trade-action controls in the markup."
+  - "Dashboard route pattern: compose Phase 5 read models into a single page model without recalculating trust or audit semantics in the API layer."
+  - "Renderer pattern: summary-first HTML sections with no forms or action buttons."
 requirements-completed: [FLOW-06]
-duration: 9min
+duration: 6min
 completed: 2026-03-17
 ---
 
 # Phase 5 Plan 03: Read-Only Dashboard Summary
 
-**Backend-rendered read-only dashboard with status-first overview, logs, trade review, and paper P&L sections**
+**Backend-served read-only dashboard that composes ops, logs, trade review, and paper-P&L sections from stable Phase 5 read models**
 
 ## Performance
 
-- **Duration:** 9 min
-- **Started:** 2026-03-17T07:29:00Z
-- **Completed:** 2026-03-17T07:38:15Z
+- **Duration:** 6 min
+- **Started:** 2026-03-17T07:33:15Z
+- **Completed:** 2026-03-17T07:39:19Z
 - **Tasks:** 2
 - **Files modified:** 8
 
 ## Accomplishments
-- Added a thin dashboard route layer and page models over the Phase 5 ops and audit read models.
-- Rendered an explicit read-only overview that keeps Telegram primary and surfaces degraded, recovering, and offline state clearly.
-- Added logs, trade review, and paper-P&L sections with summary-first markup and no hidden control affordances.
+- Added a thin dashboard route layer with explicit read-only cues and a status-first overview over the Phase 5 ops read models.
+- Added logs, trade-review, and paper-P&L sections that stay summary-first and observational.
+- Added dashboard-surface tests that verify the rendered HTML exposes no forms, buttons, or trade-action controls.
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1: Implement thin dashboard routes and status-first overview composition** - `1bb132e` (`feat`)
-2. **Task 2: Implement read-only logs, trade-review, and paper-P&L dashboard sections** - `3c175f9` (`feat`)
+1. **Task 1: Implement thin dashboard routes and status-first overview composition** - `1bb132e` (feat)
+2. **Task 2: Implement read-only logs, trade-review, and paper-P&L dashboard sections** - `3c175f9` (feat)
 
 ## Files Created/Modified
-- `backend/app/main.py` - Minimal app entrypoint exposing dashboard routes.
-- `backend/app/api/dashboard_models.py` - Page-model layer for overview and full dashboard composition.
-- `backend/app/api/dashboard_routes.py` - Read-only dashboard composition helpers.
-- `backend/app/dashboard/renderers.py` - Summary-first HTML renderers for overview, logs, review, and P&L sections.
-- `backend/tests/dashboard/test_dashboard_overview.py` - Coverage for read-only overview rendering and offline semantics.
-- `backend/tests/dashboard/test_dashboard_review_and_logs.py` - Coverage for logs/review/P&L rendering and control-free output.
-- `backend/app/ops/incident_log.py` - Expanded incident reporting shape for overview summaries and logs sections.
+- `backend/app/api/dashboard_models.py` - Dashboard page and overview view-model definitions.
+- `backend/app/api/dashboard_routes.py` - Thin route composition over overview, incident, review, and P&L read models.
+- `backend/app/dashboard/renderers.py` - Server-rendered HTML sections for overview, logs, trade review, and paper P&L.
+- `backend/app/main.py` - Dashboard surface wiring into the backend application.
+- `backend/tests/dashboard/test_dashboard_overview.py` - Coverage for read-only status-first overview and offline/session-closed semantics.
+- `backend/tests/dashboard/test_dashboard_review_and_logs.py` - Coverage for logs, trade-review, and P&L sections staying control-free.
 
 ## Decisions Made
-- The dashboard remains a backend-served HTML surface to avoid hidden frontend-platform scope in the final milestone.
-- The rendered output includes explicit read-only language and excludes buttons/forms to keep the dashboard observational.
+- The secondary dashboard remains explicitly read-only and observational so operator actions stay in Telegram.
+- Overview, logs, trade review, and P&L render as separate sections to preserve summary-first scanning of system state.
+- Dashboard routes only compose existing read models rather than deriving new trust or audit semantics in the presentation layer.
 
 ## Deviations from Plan
 
-### Auto-fixed Issues
-
-**1. [Rule 3 - Blocking] Restored expanded incident-report shape required by dashboard composition**
-- **Found during:** Task 1 (thin dashboard routes and status-first overview composition)
-- **Issue:** `backend/app/ops/incident_log.py` reverted to an older API and no longer exposed the incident report shape the dashboard needed.
-- **Fix:** Reapplied the expanded incident-report model alongside the existing event-log view so overview rendering and logs composition could share one backend seam.
-- **Files modified:** `backend/app/ops/incident_log.py`
-- **Verification:** `cd backend && uv run pytest tests/ops_dashboard tests/dashboard -q`
-- **Committed in:** `1bb132e`
-
----
-
-**Total deviations:** 1 auto-fixed (1 blocking)
-**Impact on plan:** The fix restored the intended Phase 5 read-model interface without expanding dashboard scope.
+None - plan executed exactly as written.
 
 ## Issues Encountered
-- The dashboard implementation initially failed because the incident-history module had drifted back to an older interface in the worktree.
+
+None.
 
 ## User Setup Required
 
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Phase 5 now exposes the intended secondary read-only dashboard surface over stable ops and audit read models.
-- The milestone is ready for final state validation and verification routing.
+- Phase 5 is complete and now satisfies the intended read-only dashboard requirement.
+- The milestone is ready for verification or completion workflow.
 
 ## Self-Check: PASSED
 
-- Found: `.planning/phases/05-monitoring-audit-and-review-surface/05-03-SUMMARY.md`
-- Found commit: `1bb132e`
-- Found commit: `3c175f9`
-- Verified: `cd backend && uv run pytest tests/dashboard/test_dashboard_overview.py tests/dashboard/test_dashboard_review_and_logs.py -q`
-
----
-*Phase: 05-monitoring-audit-and-review-surface*
-*Completed: 2026-03-17*
+- Verified summary file exists.
+- Verified task commits `1bb132e` and `3c175f9` exist in git history.
+- Verified `cd backend && uv run pytest tests/dashboard/test_dashboard_overview.py tests/dashboard/test_dashboard_review_and_logs.py -q`

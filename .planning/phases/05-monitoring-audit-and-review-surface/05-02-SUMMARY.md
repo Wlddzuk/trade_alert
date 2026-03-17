@@ -2,85 +2,90 @@
 phase: 05-monitoring-audit-and-review-surface
 plan: 02
 subsystem: audit
-tags: [audit-review, lifecycle-log, pnl, paper-trades, review-feed]
+tags: [audit, trade-review, pnl, lifecycle, read-models]
 requires:
   - phase: 04-telegram-workflow-and-paper-broker
-    provides: immutable paper-trade lifecycle events and trade review seams
+    provides: immutable lifecycle events and trade review seams
 provides:
-  - day-grouped completed-trade review feed
-  - raw-event drill-down attached to human-readable trade reviews
-  - today-first realized paper P&L summary with daily history
-affects: [dashboard, trade-review, phase-05-03]
+  - grouped completed-trade review feed by trading day
+  - summary-first completed trade records with raw-event drill-down
+  - today-first realized paper P&L summaries with day-by-day history
+affects: [phase-05-dashboard, trade-review, paper-pnl]
 tech-stack:
   added: []
-  patterns: [immutable review composition, review-driven pnl summaries]
+  patterns: [immutable lifecycle derivation, day-grouped review feeds, realized-first pnl summaries]
 key-files:
-  created: [backend/app/audit/review_models.py, backend/app/audit/review_service.py, backend/app/audit/pnl_summary.py, backend/tests/audit_review/test_trade_review_groups.py, backend/tests/audit_review/test_pnl_summary.py]
-  modified: []
+  created: [backend/tests/audit_review/__init__.py]
+  modified: [backend/app/audit/review_models.py, backend/app/audit/review_service.py, backend/app/audit/pnl_summary.py, backend/tests/audit_review/test_trade_review_groups.py, backend/tests/audit_review/test_pnl_summary.py]
 key-decisions:
-  - "Completed-trade review stays derived from immutable lifecycle events rather than mutable broker snapshots."
-  - "P&L summaries derive from the review feed so review and performance stay on a single source of truth."
+  - "Completed-trade review stays derived from immutable lifecycle events instead of mutable broker state."
+  - "Paper P&L remains realized-first and today-first, with day-by-day history instead of chart-first analytics."
 patterns-established:
-  - "Audit review pattern: summary-first trade records with raw lifecycle events attached as secondary drill-down."
-  - "P&L pattern: today-first realized summary plus simple daily history, not chart-first analytics."
+  - "Review feed pattern: newest closed trades first within each trading day, with raw lifecycle events preserved as secondary detail."
+  - "P&L summary pattern: compute per-day realized rows, then derive today and cumulative aggregates from the same review feed."
 requirements-completed: [OPS-03, OPS-04]
-duration: 18min
+duration: 6min
 completed: 2026-03-17
 ---
 
 # Phase 5 Plan 02: Audit Review and P&L Summary
 
-**Day-grouped immutable trade review feed with today-first realized paper-P&L summaries derived from the same lifecycle history**
+**Day-grouped completed-trade review feed and realized-first paper P&L summaries over immutable lifecycle events**
 
 ## Performance
 
-- **Duration:** 18 min
-- **Started:** 2026-03-17T07:15:00Z
-- **Completed:** 2026-03-17T07:33:14Z
+- **Duration:** 6 min
+- **Started:** 2026-03-17T07:10:00Z
+- **Completed:** 2026-03-17T07:16:00Z
 - **Tasks:** 2
-- **Files modified:** 5
+- **Files modified:** 6
 
 ## Accomplishments
-- Added a completed-trade review feed grouped by trading day with newest trades first inside each day.
-- Kept raw lifecycle events attached to each review record as secondary drill-down detail.
-- Added a today-first realized P&L summary with cumulative context and day-by-day trade-count and win-rate history.
+- Added completed-trade review models grouped by trading day with newest-first ordering.
+- Preserved raw lifecycle events as secondary drill-down detail behind the human-readable review feed.
+- Added today-first, realized-first P&L summaries with cumulative context and day-by-day history.
 
 ## Task Commits
 
 Each task was committed atomically:
 
-1. **Task 1: Implement day-grouped trade-review read models with summary-first drill-down** - `0cd3fc3` (feat)
-2. **Task 2: Implement realized-first paper-P&L summaries and day-by-day history** - `5dc9ba1` (feat)
+1. **Task 1: Implement day-grouped trade-review read models with summary-first drill-down** - `0cd3fc3` (`feat`)
+2. **Task 2: Implement realized-first paper-P&L summaries and day-by-day history** - `5dc9ba1` (`feat`)
 
 ## Files Created/Modified
-- `backend/app/audit/review_models.py` - Completed-trade review and day-grouping read models.
-- `backend/app/audit/review_service.py` - Lifecycle-to-review composition service.
-- `backend/app/audit/pnl_summary.py` - Today-first realized P&L summary service and daily history models.
-- `backend/tests/audit_review/test_trade_review_groups.py` - Coverage for day grouping, ordering, and raw-event drill-down.
-- `backend/tests/audit_review/test_pnl_summary.py` - Coverage for today-first realized results, win rate, and history.
+- `backend/app/audit/review_models.py` - Dataclasses for completed-trade review rows and day groups.
+- `backend/app/audit/review_service.py` - Immutable lifecycle to review-feed composition.
+- `backend/app/audit/pnl_summary.py` - Today-first realized P&L summary service and daily history rows.
+- `backend/tests/audit_review/test_trade_review_groups.py` - Coverage for newest-first grouping and raw-event retention.
+- `backend/tests/audit_review/test_pnl_summary.py` - Coverage for today-first P&L and win-rate aggregation.
+- `backend/tests/audit_review/__init__.py` - Ensures the audit-review test package imports cleanly.
 
 ## Decisions Made
-- Trade review groups by trade close day so operators review completed work on the day it resolved.
-- Raw lifecycle events remain attached to review records but never replace the human-readable summary view.
-- P&L summaries are derived from the same review feed instead of a parallel calculation path.
+- Review grouping is anchored to the trade close day in UTC-safe time so the operator sees completed outcomes by trading day.
+- P&L summaries derive from the review feed instead of maintaining a second aggregation source.
 
 ## Deviations from Plan
 
 None - plan executed exactly as written.
 
 ## Issues Encountered
-
-None.
+- `tests/audit_review/` needed an `__init__.py` package marker so the new audit-review test modules could import consistently under pytest.
 
 ## User Setup Required
 
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Phase 5 dashboard composition can now consume stable ops, review, and P&L read models from backend services.
-- No blockers remain for the read-only dashboard route layer.
+- Phase 5 now has immutable review and paper-P&L read models ready for dashboard composition.
+- Plan 05-03 can render review and P&L sections without reaching into broker state directly.
 
 ## Self-Check: PASSED
 
-- Verified summary file exists.
-- Verified task commits `0cd3fc3` and `5dc9ba1` exist in git history.
+- Found: `.planning/phases/05-monitoring-audit-and-review-surface/05-02-SUMMARY.md`
+- Found commit: `0cd3fc3`
+- Found commit: `5dc9ba1`
+- Verified: `cd backend && uv run pytest tests/audit_review/test_trade_review_groups.py tests/audit_review/test_pnl_summary.py -q`
+
+---
+*Phase: 05-monitoring-audit-and-review-surface*
+*Completed: 2026-03-17*
