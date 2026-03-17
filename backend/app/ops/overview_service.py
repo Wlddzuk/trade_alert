@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
+from collections.abc import Iterable
 
+from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
+from app.ops.system_events import SystemEvent
+
+from .alert_delivery_health import AlertDeliveryFailure, AlertFailureLog, build_alert_failure_log
+from .incident_log import IncidentLogView, build_incident_log
 from .monitoring_models import (
     AlertDeliveryHealth,
     AlertDeliverySnapshot,
@@ -13,6 +18,7 @@ from .monitoring_models import (
     ScannerLoopState,
     build_provider_freshness_views,
 )
+from .system_events import SystemEvent
 
 
 class OperationsOverviewService:
@@ -35,6 +41,22 @@ class OperationsOverviewService:
             alert_delivery=self._build_alert_delivery_health(alert_delivery, trust_snapshot),
             trust_reasons=trust_snapshot.reasons,
         )
+
+    def build_incident_log(
+        self,
+        events: Iterable[SystemEvent],
+        *,
+        limit: int = 10,
+    ) -> IncidentLogView:
+        return build_incident_log(tuple(events), limit=limit)
+
+    def build_alert_failure_log(
+        self,
+        failures: Iterable[AlertDeliveryFailure],
+        *,
+        limit: int = 10,
+    ) -> AlertFailureLog:
+        return build_alert_failure_log(tuple(failures), limit=limit)
 
     def _status_from_snapshot(self, snapshot: SystemTrustSnapshot) -> OperationsStatus:
         if not snapshot.runtime_state.scanning_active:
