@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 4 complete
-last_updated: "2026-03-16T00:41:27Z"
-last_activity: 2026-03-16 — Phase 4 complete and verified
+stopped_at: Phase 5 context captured
+last_updated: "2026-03-16T01:02:00Z"
+last_activity: 2026-03-16 — Phase 5 context gathered
 progress:
   total_phases: 5
   completed_phases: 4
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 5 of 5 (Monitoring, Audit, and Review Surface)
-Plan: discuss phase 5
-Status: Ready for next phase
-Last activity: 2026-03-16 — Phase 4 complete and verified
+Plan: plan phase 5
+Status: Ready for planning
+Last activity: 2026-03-16 — Phase 5 context gathered
 
 Progress: [████████░░] 81%
 
@@ -84,6 +84,10 @@ Recent decisions affecting current work:
 - Phase 4 execution: paper trades now use configurable slippage, optional partial-fill support, deterministic protective-plus-responsive exits, and a conservative stop-first rule on ambiguous bars.
 - Phase 4 execution: one shared eligibility contract now drives both trigger-ready alert actionability and final paper-trade opens across spread, liquidity, stop-distance, cutoff, cooldown, max-position, and max-loss rules.
 - Phase 4 execution: lifecycle storage is append-only and UTC-safe, and trade review can be reconstructed from lifecycle events instead of mutable broker state.
+- Phase 5: degraded trust remains prominent through a persistent dashboard warning, while stale rows may stay visible only as clearly untrusted context.
+- Phase 5: the secondary dashboard stays explicitly read-only, status-first, summary-first, and sectioned into overview, logs, trade review, and P&L.
+- Phase 5: completed trades should review by trading day with summary-first drill-down, and raw lifecycle events should stay secondary to the human-readable review.
+- Phase 5: paper P&L should emphasize today's realized results first, with cumulative-to-date secondary and day-by-day history rather than chart-first analytics.
 
 ### Pending Todos
 
@@ -91,10 +95,10 @@ None yet.
 
 ### Blockers/Concerns
 
-None active — ready for Phase 5 discussion.
+None active — ready for Phase 5 planning.
 
 ## Session Continuity
 
-Last session: 2026-03-16T00:41:27Z
-Stopped at: Phase 4 complete
-Resume file: .planning/ROADMAP.md
+Last session: 2026-03-16T01:02:00Z
+Stopped at: Phase 5 context captured
+Resume file: .planning/phases/05-monitoring-audit-and-review-surface/05-CONTEXT.md
