@@ -37,7 +37,7 @@
 - [ ] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
 - [x] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
 - [ ] **FLOW-05**: Operator can override exit behavior at any time.
-- [ ] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
+- [x] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
 
 ### Risk and Paper Trading
 
@@ -101,7 +101,7 @@
 | FLOW-03 | Phase 6 | Pending |
 | FLOW-04 | Phase 4 | Complete |
 | FLOW-05 | Phase 6 | Pending |
-| FLOW-06 | Phase 7 | Pending |
+| FLOW-06 | Phase 7 | Complete |
 | RISK-01 | Phase 4 | Complete |
 | RISK-02 | Phase 4 | Complete |
 | RISK-03 | Phase 4 | Complete |

@@ -16,7 +16,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management. (completed 2026-03-16)
 - [x] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries. (completed 2026-03-17)
 - [ ] **Phase 6: Telegram Runtime Delivery and Callback Wiring** - Wire alert delivery and operator decisions into a live Telegram transport boundary for milestone-complete workflow coverage.
-- [ ] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime.
+- [x] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime. (completed 2026-03-18)
 - [ ] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete.
 
 ## Phase Details
@@ -129,11 +129,11 @@ Plans:
   2. Operators can access the read-only dashboard at runtime to review system status, logs, and completed paper trades.
   3. The secondary dashboard review flow works through the served app boundary rather than direct renderer invocation.
   4. Dashboard runtime availability is covered by verification evidence beyond composition-only tests.
-**Plans**: 0 plans
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: Register dashboard routes on a served application boundary
-- [ ] 07-02: Validate read-only dashboard runtime access and review flows
+- [x] 07-01: Register dashboard routes on a served application boundary
+- [x] 07-02: Validate read-only dashboard runtime access and review flows
 
 ### Phase 8: Monitoring Verification Recovery
 **Goal**: Restore milestone-audit readiness by producing the missing Phase 5 verification evidence for monitoring, audit, and review capabilities.
@@ -164,5 +164,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 4. Telegram Workflow and Paper Broker | 4/4 | Complete | 2026-03-16 |
 | 5. Monitoring, Audit, and Review Surface | 3/3 | Complete | 2026-03-17 |
 | 6. Telegram Runtime Delivery and Callback Wiring | 0/3 | Not Started | |
-| 7. Served Dashboard Runtime Surface | 0/2 | Not Started | |
+| 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 0/2 | Not Started | |
