@@ -9,6 +9,7 @@ from typing import Callable
 from app.alerts.approval_workflow import (
     EntryDecision,
     OpenTradeCommand,
+    approve_with_adjustments,
     approve_with_defaults,
     close_trade,
     reject_entry,
@@ -59,12 +60,16 @@ class TelegramActionExecutor:
         self.trade_id_factory = trade_id_factory or (lambda alert_id: f"trade-{alert_id}")
         self.entry_quantity = entry_quantity
         self.close_price_resolver = close_price_resolver or (lambda trade: trade.fill_price)
+        from app.api.telegram_adjustments import TelegramAdjustmentCoordinator
+
+        self.adjustments = TelegramAdjustmentCoordinator(registry=self.registry)
 
     def execute_callback(
         self,
         *,
         callback_query_id: str,
         callback_data: str,
+        actor_id: str | None = None,
         observed_at: datetime | None = None,
     ) -> TelegramExecutionResult:
         previous_response = self.registry.response_for_callback(callback_query_id)
@@ -167,9 +172,93 @@ class TelegramActionExecutor:
                 trade=closed_trade,
             )
 
+        if parsed.action is TelegramCallbackAction.ADJUST:
+            if actor_id is None:
+                response = "Adjustment start failed. Operator identity is required."
+                self.registry.remember_callback_response(callback_query_id, response)
+                return TelegramExecutionResult(
+                    status=ExecutionStatus.INVALID,
+                    response_text=response,
+                )
+            assert resolved.alert is not None
+            adjustment = self.adjustments.start_entry_adjustment(
+                actor_id=actor_id,
+                alert=resolved.alert,
+                observed_at=current_time,
+            )
+            self.registry.remember_callback_response(callback_query_id, adjustment.response_text)
+            return TelegramExecutionResult(
+                status=ExecutionStatus.NEEDS_INPUT,
+                response_text=adjustment.response_text,
+            )
+
         response = "Action accepted. Follow-up operator input is required to continue."
         self.registry.remember_callback_response(callback_query_id, response)
         return TelegramExecutionResult(
             status=ExecutionStatus.NEEDS_INPUT,
             response_text=response,
+        )
+
+    def execute_message(
+        self,
+        *,
+        actor_id: str,
+        text: str,
+        observed_at: datetime | None = None,
+    ) -> TelegramExecutionResult:
+        from app.api.telegram_adjustments import TelegramAdjustmentStatus
+
+        current_time = datetime.now(tz=UTC) if observed_at is None else observed_at.astimezone(UTC)
+        adjustment = self.adjustments.handle_message(
+            actor_id=actor_id,
+            text=text,
+            observed_at=current_time,
+        )
+        if adjustment.status is TelegramAdjustmentStatus.ACCEPTED:
+            assert adjustment.alert is not None
+            decision = approve_with_adjustments(
+                adjustment.alert,
+                stop_price=None if not adjustment.stop_changed else adjustment.stop_price,
+                target_price=None if not adjustment.target_changed else adjustment.target_price,
+                decided_at=current_time,
+            )
+            record_entry_decision(self.lifecycle_log, decision)
+            trade = self.broker.open_trade(
+                decision,
+                trade_id=self.trade_id_factory(adjustment.alert.alert_id),
+                quantity=self.entry_quantity,
+                opened_at=current_time,
+                lifecycle_log=self.lifecycle_log,
+            )
+            self.registry.mark_alert_terminal(adjustment.alert.alert_id, "trade opened")
+            self.registry.register_trade(
+                trade,
+                status=(
+                    f"trade open at {trade.fill_price.normalize():f} "
+                    f"with stop {trade.stop_price.normalize():f} and target {trade.target_price.normalize():f}"
+                ),
+            )
+            return TelegramExecutionResult(
+                status=ExecutionStatus.ACCEPTED,
+                response_text=adjustment.response_text,
+                decision=decision,
+                trade=trade,
+            )
+        if adjustment.status is TelegramAdjustmentStatus.NEEDS_INPUT:
+            return TelegramExecutionResult(
+                status=ExecutionStatus.NEEDS_INPUT,
+                response_text=adjustment.response_text,
+            )
+        if adjustment.status in {
+            TelegramAdjustmentStatus.CANCELLED,
+            TelegramAdjustmentStatus.EXPIRED,
+            TelegramAdjustmentStatus.STALE,
+        }:
+            return TelegramExecutionResult(
+                status=ExecutionStatus.STALE,
+                response_text=adjustment.response_text,
+            )
+        return TelegramExecutionResult(
+            status=ExecutionStatus.INVALID,
+            response_text=adjustment.response_text,
         )

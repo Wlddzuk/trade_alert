@@ -125,16 +125,18 @@ def approve_with_defaults(
 def approve_with_adjustments(
     alert: PreEntryAlert,
     *,
-    stop_price: str | int | float,
-    target_price: str | int | float,
+    stop_price: str | int | float | None = None,
+    target_price: str | int | float | None = None,
     decided_at: datetime | None = None,
 ) -> EntryDecision:
     _require_actionable(alert)
+    if stop_price is None and target_price is None:
+        raise ValueError("adjusted approval requires stop_price and/or target_price")
     adjusted_proposal = TradeProposal(
         symbol=alert.symbol,
         entry_price=alert.proposal.entry_price,
-        stop_price=stop_price,
-        target_price=target_price,
+        stop_price=alert.proposal.stop_price if stop_price is None else stop_price,
+        target_price=alert.proposal.target_price if target_price is None else target_price,
         thesis=alert.proposal.thesis,
     )
     return EntryDecision(

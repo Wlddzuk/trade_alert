@@ -22,13 +22,39 @@ class TelegramCallbackHandler:
 
     def handle_update(self, update: Mapping[str, Any]) -> TelegramRouteResponse:
         callback = update.get("callback_query")
-        if callback is None:
+        message = update.get("message")
+        if callback is None and message is None:
             return TelegramRouteResponse(
                 status_code=202,
                 body={
                     "ok": True,
                     "status": "ignored",
-                    "message": "No callback query payload was provided.",
+                    "message": "No Telegram callback or message payload was provided.",
+                },
+            )
+
+        if message is not None:
+            actor_id = _extract_actor_id(message)
+            text = str(message.get("text", "")).strip()
+            if actor_id is None or not text:
+                return TelegramRouteResponse(
+                    status_code=400,
+                    body={
+                        "ok": False,
+                        "status": "invalid",
+                        "message": "Telegram message payload requires actor identity and text.",
+                    },
+                )
+            result = self.executor.execute_message(
+                actor_id=actor_id,
+                text=text,
+            )
+            return TelegramRouteResponse(
+                status_code=200,
+                body={
+                    "ok": result.status is not ExecutionStatus.INVALID,
+                    "status": result.status.value,
+                    "message": result.response_text,
                 },
             )
 
@@ -47,6 +73,7 @@ class TelegramCallbackHandler:
         result = self.executor.execute_callback(
             callback_query_id=callback_query_id,
             callback_data=callback_data,
+            actor_id=_extract_actor_id(callback),
         )
         return TelegramRouteResponse(
             status_code=200,
@@ -56,3 +83,24 @@ class TelegramCallbackHandler:
                 "message": result.response_text,
             },
         )
+
+
+def _extract_actor_id(payload: Mapping[str, Any]) -> str | None:
+    from_payload = payload.get("from")
+    if isinstance(from_payload, Mapping):
+        actor = str(from_payload.get("id", "")).strip()
+        if actor:
+            return actor
+    message = payload.get("message")
+    if isinstance(message, Mapping):
+        chat = message.get("chat")
+        if isinstance(chat, Mapping):
+            actor = str(chat.get("id", "")).strip()
+            if actor:
+                return actor
+    chat = payload.get("chat")
+    if isinstance(chat, Mapping):
+        actor = str(chat.get("id", "")).strip()
+        if actor:
+            return actor
+    return None

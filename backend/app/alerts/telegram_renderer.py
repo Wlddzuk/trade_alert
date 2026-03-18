@@ -108,3 +108,46 @@ def render_trade_closed_message(event: TradeClosedEvent) -> RenderedTelegramMess
     if event.realized_pnl is not None:
         lines.append(f"Realized P&L: {_format_decimal(event.realized_pnl)}")
     return RenderedTelegramMessage(text="\n".join(lines))
+
+
+def render_adjustment_stop_prompt(alert: PreEntryAlert) -> RenderedTelegramMessage:
+    return RenderedTelegramMessage(
+        text=(
+            f"[Adjust Entry] {alert.symbol}\n"
+            f"Current stop: {_format_decimal(alert.proposal.stop_price)}\n"
+            "Reply with the new stop price or 'keep'. Reply 'cancel' to abandon the adjustment."
+        )
+    )
+
+
+def render_adjustment_target_prompt(
+    alert: PreEntryAlert,
+    *,
+    stop_price: Decimal,
+) -> RenderedTelegramMessage:
+    return RenderedTelegramMessage(
+        text=(
+            f"[Adjust Entry] {alert.symbol}\n"
+            f"Stop set to: {_format_decimal(stop_price)}\n"
+            f"Current target: {_format_decimal(alert.proposal.target_price)}\n"
+            "Reply with the new target price or 'keep'. Reply 'cancel' to abandon the adjustment."
+        )
+    )
+
+
+def render_adjustment_confirmation(
+    alert: PreEntryAlert,
+    *,
+    stop_price: Decimal,
+    target_price: Decimal,
+) -> RenderedTelegramMessage:
+    return RenderedTelegramMessage(
+        text=(
+            f"[Confirm Adjusted Entry] {alert.symbol}\n"
+            f"Entry / Stop / Target: "
+            f"{_format_decimal(alert.proposal.entry_price)} / "
+            f"{_format_decimal(stop_price)} / "
+            f"{_format_decimal(target_price)}\n"
+            "Reply 'confirm' to approve these levels or 'cancel' to abandon the adjustment."
+        )
+    )

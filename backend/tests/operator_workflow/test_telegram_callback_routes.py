@@ -199,10 +199,115 @@ def test_adjust_callbacks_are_parsed_and_return_follow_up_status() -> None:
             "callback_query": {
                 "id": "cb-adjust-1",
                 "data": f"entry:ad:{alert.alert_id}",
+                "from": {"id": "operator-0"},
             }
         }
     )
 
     assert response.status_code == 200
     assert response.body["status"] == "needs_input"
-    assert "follow-up operator input" in str(response.body["message"]).lower()
+    assert "current stop" in str(response.body["message"]).lower()
+
+
+def test_adjustment_message_flow_requires_confirmation_before_opening_trade() -> None:
+    app, registry, lifecycle_log = _app_with_runtime()
+    alert = _actionable_alert()
+    registry.register_alert(alert)
+
+    start = app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-adjust-2",
+                "data": f"entry:ad:{alert.alert_id}",
+                "from": {"id": "operator-1"},
+            }
+        }
+    )
+    assert start.body["status"] == "needs_input"
+
+    stop = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-1"},
+                "text": "11.90",
+            }
+        }
+    )
+    assert stop.body["status"] == "needs_input"
+    assert "current target" in str(stop.body["message"]).lower()
+
+    target = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-1"},
+                "text": "keep",
+            }
+        }
+    )
+    assert target.body["status"] == "needs_input"
+    assert "confirm adjusted entry" in str(target.body["message"]).lower()
+
+    confirm = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-1"},
+                "text": "confirm",
+            }
+        }
+    )
+    assert confirm.body["status"] == "accepted"
+    assert "adjusted entry confirmed" in str(confirm.body["message"]).lower()
+    events = lifecycle_log.all_events()
+    assert [event.event_type for event in events] == [
+        LifecycleEventType.ENTRY_DECISION,
+        LifecycleEventType.TRADE_OPENED,
+    ]
+
+
+def test_adjustment_session_reports_expired_and_stale_failures_clearly() -> None:
+    app, registry, _ = _app_with_runtime()
+    older = _actionable_alert(observed_at=datetime(2026, 3, 15, 14, 40, tzinfo=UTC))
+    newer = _actionable_alert(observed_at=datetime(2026, 3, 15, 14, 41, tzinfo=UTC))
+    registry.register_alert(older)
+
+    app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-adjust-stale",
+                "data": f"entry:ad:{older.alert_id}",
+                "from": {"id": "operator-2"},
+            }
+        }
+    )
+
+    registry.register_alert(newer)
+    stale = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-2"},
+                "text": "11.90",
+            }
+        }
+    )
+    assert stale.body["status"] == "needs_input"
+
+    confirm = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-2"},
+                "text": "13.90",
+            }
+        }
+    )
+    assert confirm.body["status"] == "needs_input"
+
+    stale_confirm = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-2"},
+                "text": "confirm",
+            }
+        }
+    )
+    assert stale_confirm.body["status"] == "stale"
+    assert "current alert state" in str(stale_confirm.body["message"]).lower()
