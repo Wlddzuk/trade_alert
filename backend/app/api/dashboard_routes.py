@@ -27,6 +27,9 @@ class DashboardHttpResponse:
 class DashboardRoutes:
     overview_path = "/dashboard"
     login_path = "/dashboard/login"
+    logs_path = "/dashboard/logs"
+    trade_review_path = "/dashboard/trades"
+    pnl_path = "/dashboard/pnl"
 
     def __init__(
         self,
@@ -63,6 +66,25 @@ class DashboardRoutes:
             )
         )
 
+    def render_section_page(
+        self,
+        snapshot,
+        *,
+        active_section: str,
+    ) -> str:
+        return render_dashboard_page(
+            DashboardPageModel(
+                overview=self.build_overview_model(snapshot.overview, snapshot.incident_report),
+                active_section=active_section,
+                last_updated_at=snapshot.last_updated_at,
+                refresh_interval_seconds=snapshot.refresh_interval_seconds,
+                stale=snapshot.stale,
+                stale_message=snapshot.stale_message,
+                review_feed=snapshot.review_feed,
+                pnl_summary=snapshot.pnl_summary,
+            )
+        )
+
     def handle_http_request(
         self,
         *,
@@ -75,7 +97,8 @@ class DashboardRoutes:
             return self._redirect(self.overview_path)
         if path == self.login_path:
             return self._handle_login(method=method, body=body)
-        if path != self.overview_path:
+        section = self._section_for_path(path)
+        if section is None:
             return self._html_response(
                 status_code=404,
                 body=(
@@ -103,10 +126,21 @@ class DashboardRoutes:
             )
         if not self.sessions.is_authenticated(headers):
             return self._html_response(status_code=401, body=self._render_login_page())
-        snapshot = self.snapshot_provider.build_snapshot()
+        try:
+            snapshot = self.snapshot_provider.build_snapshot()
+        except Exception:
+            return self._html_response(
+                status_code=503,
+                body=(
+                    "<!DOCTYPE html><html lang='en'><body>"
+                    "<h1>Dashboard refresh unavailable</h1>"
+                    "<p>No successful dashboard snapshot is available yet.</p>"
+                    "</body></html>"
+                ),
+            )
         return self._html_response(
             status_code=200,
-            body=self.render_overview_page(snapshot.overview, snapshot.incident_report),
+            body=self.render_section_page(snapshot, active_section=section),
         )
 
     def _handle_login(
@@ -153,6 +187,17 @@ class DashboardRoutes:
             "</body></html>"
         )
 
+    def _section_for_path(self, path: str) -> str | None:
+        if path == self.overview_path:
+            return "overview"
+        if path == self.logs_path:
+            return "logs"
+        if path == self.trade_review_path:
+            return "trade-review"
+        if path == self.pnl_path:
+            return "pnl"
+        return None
+
     def _html_response(
         self,
         *,
@@ -188,6 +233,7 @@ class DashboardRoutes:
         return render_dashboard_page(
             DashboardPageModel(
                 overview=self.build_overview_model(overview, incident_report),
+                active_section="all",
                 review_feed=review_feed,
                 pnl_summary=pnl_summary,
             )

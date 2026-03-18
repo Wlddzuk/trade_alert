@@ -6,36 +6,85 @@ from app.api.dashboard_models import DashboardPageModel
 
 
 def render_dashboard_page(page: DashboardPageModel) -> str:
+    refresh_meta = ""
+    if page.refresh_interval_seconds is not None:
+        refresh_meta = (
+            f"  <meta http-equiv='refresh' content='{page.refresh_interval_seconds}'>"
+        )
     sections = [
         "<!DOCTYPE html>",
         "<html lang='en'>",
         "<head>",
         "  <meta charset='utf-8'>",
+        refresh_meta,
         "  <title>Buy Signal Dashboard</title>",
         "</head>",
         "<body>",
         "  <main data-dashboard='read-only'>",
         _render_header(page),
-        _render_overview(page),
     ]
-
-    if page.review_feed is not None and page.pnl_summary is not None:
-        sections.append(_render_logs(page))
-        sections.append(_render_trade_review(page))
-        sections.append(_render_pnl(page))
+    sections.append(_render_active_section(page))
 
     sections.extend(["  </main>", "</body>", "</html>"])
-    return "\n".join(sections)
+    return "\n".join(section for section in sections if section)
 
 
 def _render_header(page: DashboardPageModel) -> str:
+    last_updated = ""
+    if page.last_updated_at is not None:
+        last_updated = (
+            "<p>"
+            f"Last updated: {escape(page.last_updated_at.isoformat())}"
+            "</p>"
+        )
+    refresh_posture = ""
+    if page.refresh_interval_seconds is not None:
+        refresh_posture = (
+            "<p>"
+            f"Auto-refresh: every {page.refresh_interval_seconds} seconds"
+            "</p>"
+        )
+    stale_warning = ""
+    if page.stale:
+        message = page.stale_message or "Runtime refresh is stale."
+        stale_warning = f"<p>Stale warning: {escape(message)}</p>"
     return (
         "    <header>"
         f"<p>{escape(page.overview.read_only_label)}</p>"
         f"<p>{escape(page.overview.primary_workflow_label)}</p>"
-        "<nav>Overview | Logs | Trade Review | Paper P&amp;L</nav>"
+        "<nav>"
+        "<a href='/dashboard'>Overview</a> | "
+        "<a href='/dashboard/logs'>Logs</a> | "
+        "<a href='/dashboard/trades'>Trade Review</a> | "
+        "<a href='/dashboard/pnl'>Paper P&amp;L</a>"
+        "</nav>"
+        f"{last_updated}"
+        f"{refresh_posture}"
+        f"{stale_warning}"
         "</header>"
     )
+
+
+def _render_active_section(page: DashboardPageModel) -> str:
+    section = page.active_section
+    if section == "all":
+        return "".join(
+            (
+                _render_overview(page),
+                _render_logs(page),
+                _render_trade_review(page),
+                _render_pnl(page),
+            )
+        )
+    if section == "overview":
+        return _render_overview(page)
+    if section == "logs":
+        return _render_logs(page)
+    if section == "trade-review":
+        return _render_trade_review(page)
+    if section == "pnl":
+        return _render_pnl(page)
+    return _render_overview(page)
 
 
 def _render_overview(page: DashboardPageModel) -> str:
@@ -87,6 +136,7 @@ def _render_logs(page: DashboardPageModel) -> str:
         "    <section id='logs'>"
         "<h2>Logs</h2>"
         "<p>Observational only. Recent issues stay separate from the landing overview.</p>"
+        "<p>Mobile-safe quick review: critical issues first, resolved incidents second.</p>"
         "<h3>Recent critical issues</h3>"
         f"<ul>{critical}</ul>"
         "<h3>Recently resolved incidents</h3>"
@@ -123,6 +173,7 @@ def _render_trade_review(page: DashboardPageModel) -> str:
         "    <section id='trade-review'>"
         "<h2>Trade Review</h2>"
         "<p>Summary-first trade review with raw lifecycle events kept secondary.</p>"
+        "<p>Smaller screens should start from collapsed day groups before deeper review.</p>"
         + "".join(groups)
         + "</section>"
     )
