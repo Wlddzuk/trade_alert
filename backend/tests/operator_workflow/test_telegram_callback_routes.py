@@ -311,3 +311,102 @@ def test_adjustment_session_reports_expired_and_stale_failures_clearly() -> None
     )
     assert stale_confirm.body["status"] == "stale"
     assert "current alert state" in str(stale_confirm.body["message"]).lower()
+
+
+def test_trade_override_message_flow_updates_stop_and_target_levels() -> None:
+    app, registry, _ = _app_with_runtime()
+    alert = _actionable_alert()
+    registry.register_alert(alert)
+    app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-open-override-1",
+                "data": f"entry:ap:{alert.alert_id}",
+            }
+        }
+    )
+    trade_id = f"paper-{alert.alert_id}"
+
+    start_stop = app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-stop-start-1",
+                "data": f"trade:st:{trade_id}",
+                "from": {"id": "operator-override"},
+            }
+        }
+    )
+    assert start_stop.body["status"] == "needs_input"
+    assert "new stop price" in str(start_stop.body["message"]).lower()
+
+    stop_reply = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-override"},
+                "text": "12.05",
+            }
+        }
+    )
+    assert stop_reply.body["status"] == "accepted"
+    assert "stop updated" in str(stop_reply.body["message"]).lower()
+    assert "12.05" in str(stop_reply.body["message"])
+
+    start_target = app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-target-start-1",
+                "data": f"trade:tg:{trade_id}",
+                "from": {"id": "operator-override"},
+            }
+        }
+    )
+    assert start_target.body["status"] == "needs_input"
+    assert "new target price" in str(start_target.body["message"]).lower()
+
+    target_reply = app.telegram.handle_update(
+        {
+            "message": {
+                "chat": {"id": "operator-override"},
+                "text": "13.9",
+            }
+        }
+    )
+    assert target_reply.body["status"] == "accepted"
+    assert "target updated" in str(target_reply.body["message"]).lower()
+    assert "13.9" in str(target_reply.body["message"]).lower()
+
+
+def test_trade_override_reports_stale_state_after_trade_closes() -> None:
+    app, registry, _ = _app_with_runtime()
+    alert = _actionable_alert()
+    registry.register_alert(alert)
+    app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-open-override-2",
+                "data": f"entry:ap:{alert.alert_id}",
+            }
+        }
+    )
+    trade_id = f"paper-{alert.alert_id}"
+    app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-close-override-2",
+                "data": f"trade:cl:{trade_id}",
+            }
+        }
+    )
+
+    response = app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-stop-stale-2",
+                "data": f"trade:st:{trade_id}",
+                "from": {"id": "operator-override-stale"},
+            }
+        }
+    )
+
+    assert response.body["status"] == "stale"
+    assert "current trade state" in str(response.body["message"]).lower()

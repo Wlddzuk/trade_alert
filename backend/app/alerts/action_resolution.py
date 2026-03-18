@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from app.alerts.models import PreEntryAlert
@@ -51,6 +51,23 @@ class ResolvedTelegramAction:
     message: str
     alert: PreEntryAlert | None = None
     trade: PaperTrade | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingTradeOverride:
+    actor_id: str
+    action: TelegramCallbackAction
+    trade_id: str
+    started_at: datetime
+    expires_at: datetime
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "started_at", ensure_utc(self.started_at, field_name="started_at"))
+        object.__setattr__(self, "expires_at", ensure_utc(self.expires_at, field_name="expires_at"))
+        cleaned_actor_id = self.actor_id.strip()
+        if not cleaned_actor_id:
+            raise ValueError("actor_id must not be empty")
+        object.__setattr__(self, "actor_id", cleaned_actor_id)
 
 
 @dataclass(slots=True)
@@ -112,6 +129,7 @@ class TelegramActionRegistry:
     _trades: dict[str, _TradeRecord] = field(default_factory=dict)
     _latest_trade_by_symbol: dict[str, str] = field(default_factory=dict)
     _responses_by_callback_id: dict[str, str] = field(default_factory=dict)
+    _pending_trade_overrides: dict[str, PendingTradeOverride] = field(default_factory=dict)
 
     def register_alert(self, alert: PreEntryAlert) -> None:
         record = _AlertRecord(alert=alert, actionable=alert.approval_capable)
@@ -143,6 +161,46 @@ class TelegramActionRegistry:
             self._latest_trade_by_symbol[trade.symbol] = trade.trade_id
         elif self._latest_trade_by_symbol.get(trade.symbol) == trade.trade_id:
             self._latest_trade_by_symbol.pop(trade.symbol, None)
+
+    def start_trade_override(
+        self,
+        *,
+        actor_id: str,
+        action: TelegramCallbackAction,
+        trade: PaperTrade,
+        observed_at: datetime,
+        timeout: timedelta = timedelta(minutes=5),
+    ) -> PendingTradeOverride:
+        if action not in {TelegramCallbackAction.ADJUST_STOP, TelegramCallbackAction.ADJUST_TARGET}:
+            raise ValueError("trade override sessions only support stop/target adjustments")
+        current_time = ensure_utc(observed_at, field_name="observed_at")
+        session = PendingTradeOverride(
+            actor_id=actor_id,
+            action=action,
+            trade_id=trade.trade_id,
+            started_at=current_time,
+            expires_at=current_time + timeout,
+        )
+        self._pending_trade_overrides[session.actor_id] = session
+        return session
+
+    def current_trade_override(
+        self,
+        *,
+        actor_id: str,
+        observed_at: datetime,
+    ) -> PendingTradeOverride | None:
+        session = self._pending_trade_overrides.get(actor_id)
+        if session is None:
+            return None
+        current_time = ensure_utc(observed_at, field_name="observed_at")
+        if current_time > session.expires_at:
+            self._pending_trade_overrides.pop(actor_id, None)
+            return None
+        return session
+
+    def clear_trade_override(self, actor_id: str) -> None:
+        self._pending_trade_overrides.pop(actor_id, None)
 
     def response_for_callback(self, callback_query_id: str) -> str | None:
         return self._responses_by_callback_id.get(callback_query_id)

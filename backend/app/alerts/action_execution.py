@@ -9,6 +9,8 @@ from typing import Callable
 from app.alerts.approval_workflow import (
     EntryDecision,
     OpenTradeCommand,
+    adjust_trade_stop,
+    adjust_trade_target,
     approve_with_adjustments,
     approve_with_defaults,
     close_trade,
@@ -19,6 +21,7 @@ from app.paper.broker import PaperBroker
 from app.paper.models import PaperTrade
 
 from .action_resolution import (
+    PendingTradeOverride,
     ResolutionStatus,
     TelegramActionRegistry,
     TelegramCallbackAction,
@@ -63,6 +66,80 @@ class TelegramActionExecutor:
         from app.api.telegram_adjustments import TelegramAdjustmentCoordinator
 
         self.adjustments = TelegramAdjustmentCoordinator(registry=self.registry)
+
+    @staticmethod
+    def _format_trade_state(trade: PaperTrade) -> str:
+        return (
+            f"open at {trade.fill_price.normalize():f} "
+            f"with stop {trade.stop_price.normalize():f} and target {trade.target_price.normalize():f}"
+        )
+
+    @staticmethod
+    def _parse_trade_level(text: str, *, field_name: str) -> str:
+        cleaned = text.strip()
+        if not cleaned:
+            raise ValueError(f"{field_name} requires a decimal price.")
+        try:
+            level = Decimal(cleaned)
+        except Exception as exc:  # pragma: no cover - Decimal error type varies
+            raise ValueError(f"{field_name} requires a decimal price.") from exc
+        if level <= 0:
+            raise ValueError(f"{field_name} must be greater than zero.")
+        return format(level.normalize(), "f")
+
+    def _apply_trade_override(
+        self,
+        *,
+        session: PendingTradeOverride,
+        observed_at: datetime,
+        text: str,
+    ) -> TelegramExecutionResult:
+        resolved = self.registry.resolve(
+            parse_callback_data(
+                callback_query_id=f"trade-override:{session.trade_id}",
+                data=(
+                    f"trade:{'st' if session.action is TelegramCallbackAction.ADJUST_STOP else 'tg'}:{session.trade_id}"
+                ),
+            )
+        )
+        if resolved.status is not ResolutionStatus.READY or resolved.trade is None:
+            self.registry.clear_trade_override(session.actor_id)
+            return TelegramExecutionResult(
+                status=ExecutionStatus.STALE,
+                response_text=resolved.message,
+                trade=resolved.trade,
+            )
+
+        field_name = "stop_price" if session.action is TelegramCallbackAction.ADJUST_STOP else "target_price"
+        try:
+            level = self._parse_trade_level(text, field_name=field_name)
+        except ValueError as exc:
+            return TelegramExecutionResult(
+                status=ExecutionStatus.INVALID,
+                response_text=str(exc),
+                trade=resolved.trade,
+            )
+
+        command = (
+            adjust_trade_stop(resolved.trade.open_snapshot, new_stop_price=level, decided_at=observed_at)
+            if session.action is TelegramCallbackAction.ADJUST_STOP
+            else adjust_trade_target(resolved.trade.open_snapshot, new_target_price=level, decided_at=observed_at)
+        )
+        updated_trade = self.broker.apply_open_trade_command(
+            resolved.trade,
+            command,
+            lifecycle_log=self.lifecycle_log,
+        )
+        self.registry.update_trade(updated_trade, status=f"trade open {self._format_trade_state(updated_trade)}")
+        self.registry.clear_trade_override(session.actor_id)
+        action_label = "Stop" if session.action is TelegramCallbackAction.ADJUST_STOP else "Target"
+        response = f"{action_label} updated. Current trade state: {self._format_trade_state(updated_trade)}."
+        return TelegramExecutionResult(
+            status=ExecutionStatus.ACCEPTED,
+            response_text=response,
+            command=command,
+            trade=updated_trade,
+        )
 
     def execute_callback(
         self,
@@ -172,6 +249,33 @@ class TelegramActionExecutor:
                 trade=closed_trade,
             )
 
+        if parsed.action in {TelegramCallbackAction.ADJUST_STOP, TelegramCallbackAction.ADJUST_TARGET}:
+            if actor_id is None:
+                response = "Trade override failed. Operator identity is required."
+                self.registry.remember_callback_response(callback_query_id, response)
+                return TelegramExecutionResult(
+                    status=ExecutionStatus.INVALID,
+                    response_text=response,
+                )
+            assert resolved.trade is not None
+            self.registry.start_trade_override(
+                actor_id=actor_id,
+                action=parsed.action,
+                trade=resolved.trade,
+                observed_at=current_time,
+            )
+            action_label = "stop" if parsed.action is TelegramCallbackAction.ADJUST_STOP else "target"
+            response = (
+                f"Reply with the new {action_label} price for {resolved.trade.symbol}. "
+                f"Current trade state: {self._format_trade_state(resolved.trade)}."
+            )
+            self.registry.remember_callback_response(callback_query_id, response)
+            return TelegramExecutionResult(
+                status=ExecutionStatus.NEEDS_INPUT,
+                response_text=response,
+                trade=resolved.trade,
+            )
+
         if parsed.action is TelegramCallbackAction.ADJUST:
             if actor_id is None:
                 response = "Adjustment start failed. Operator identity is required."
@@ -209,6 +313,16 @@ class TelegramActionExecutor:
         from app.api.telegram_adjustments import TelegramAdjustmentStatus
 
         current_time = datetime.now(tz=UTC) if observed_at is None else observed_at.astimezone(UTC)
+        pending_trade_override = self.registry.current_trade_override(
+            actor_id=actor_id,
+            observed_at=current_time,
+        )
+        if pending_trade_override is not None:
+            return self._apply_trade_override(
+                session=pending_trade_override,
+                observed_at=current_time,
+                text=text,
+            )
         adjustment = self.adjustments.handle_message(
             actor_id=actor_id,
             text=text,
