@@ -32,12 +32,12 @@
 
 ### Alerts and Operator Workflow
 
-- [x] **FLOW-01**: Operator receives qualifying setup alerts in Telegram.
-- [x] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
-- [x] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
+- [ ] **FLOW-01**: Operator receives qualifying setup alerts in Telegram.
+- [ ] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
+- [ ] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
 - [x] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
-- [x] **FLOW-05**: Operator can override exit behavior at any time.
-- [x] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
+- [ ] **FLOW-05**: Operator can override exit behavior at any time.
+- [ ] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
 
 ### Risk and Paper Trading
 
@@ -51,11 +51,11 @@
 
 ### Monitoring and Audit
 
-- [x] **OPS-01**: Operator can see when the system is degraded or untrusted because data freshness or alert-delivery thresholds are breached.
-- [x] **OPS-02**: Operator can rely on scanner loop health being monitored during runtime.
-- [x] **OPS-03**: Operator can review immutable audit logs with UTC timestamps for each paper trade lifecycle.
-- [x] **OPS-04**: Operator can review paper P&L summaries.
-- [x] **OPS-05**: Operator can review error logs for data, scanner, and alert failures.
+- [ ] **OPS-01**: Operator can see when the system is degraded or untrusted because data freshness or alert-delivery thresholds are breached.
+- [ ] **OPS-02**: Operator can rely on scanner loop health being monitored during runtime.
+- [ ] **OPS-03**: Operator can review immutable audit logs with UTC timestamps for each paper trade lifecycle.
+- [ ] **OPS-04**: Operator can review paper P&L summaries.
+- [ ] **OPS-05**: Operator can review error logs for data, scanner, and alert failures.
 
 ## v2 Requirements
 
@@ -96,12 +96,12 @@
 | SIG-03 | Phase 3 | Complete |
 | SIG-04 | Phase 3 | Complete |
 | SIG-05 | Phase 4 | Complete |
-| FLOW-01 | Phase 4 | Complete |
-| FLOW-02 | Phase 4 | Complete |
-| FLOW-03 | Phase 4 | Complete |
+| FLOW-01 | Phase 6 | Pending |
+| FLOW-02 | Phase 6 | Pending |
+| FLOW-03 | Phase 6 | Pending |
 | FLOW-04 | Phase 4 | Complete |
-| FLOW-05 | Phase 4 | Complete |
-| FLOW-06 | Phase 5 | Complete |
+| FLOW-05 | Phase 6 | Pending |
+| FLOW-06 | Phase 7 | Pending |
 | RISK-01 | Phase 4 | Complete |
 | RISK-02 | Phase 4 | Complete |
 | RISK-03 | Phase 4 | Complete |
@@ -109,11 +109,11 @@
 | RISK-05 | Phase 4 | Complete |
 | RISK-06 | Phase 4 | Complete |
 | RISK-07 | Phase 4 | Complete |
-| OPS-01 | Phase 5 | Complete |
-| OPS-02 | Phase 5 | Complete |
-| OPS-03 | Phase 5 | Complete |
-| OPS-04 | Phase 5 | Complete |
-| OPS-05 | Phase 5 | Complete |
+| OPS-01 | Phase 8 | Pending |
+| OPS-02 | Phase 8 | Pending |
+| OPS-03 | Phase 8 | Pending |
+| OPS-04 | Phase 8 | Pending |
+| OPS-05 | Phase 8 | Pending |
 
 **Coverage:**
 - v1 requirements: 34 total
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-17 after Phase 5 completion*
+*Last updated: 2026-03-18 after milestone gap planning*

@@ -15,6 +15,9 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 3: Strategy Validity and Ranking** - Add momentum pullback defaults, trigger logic, invalidations, `setup_valid`, and score/rank behavior. (completed 2026-03-15)
 - [x] **Phase 4: Telegram Workflow and Paper Broker** - Add operator approvals, risk gates, paper fills, and exit management. (completed 2026-03-16)
 - [x] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries. (completed 2026-03-17)
+- [ ] **Phase 6: Telegram Runtime Delivery and Callback Wiring** - Wire alert delivery and operator decisions into a live Telegram transport boundary for milestone-complete workflow coverage.
+- [ ] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime.
+- [ ] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete.
 
 ## Phase Details
 
@@ -99,6 +102,55 @@ Plans:
 - [x] 05-02: Implement immutable audit review and paper P&L summaries
 - [x] 05-03: Implement the secondary read-only dashboard for status, logs, and trade review
 
+### Phase 6: Telegram Runtime Delivery and Callback Wiring
+**Goal**: Close the live operator-workflow gap by wiring Telegram alert delivery, callback handling, and override actions into the application runtime.
+**Depends on**: Phase 5
+**Requirements**: FLOW-01, FLOW-02, FLOW-03, FLOW-05
+**Gap Closure**: Closes milestone audit gaps for Telegram transport, callback handling, and operator override runtime flow.
+**Success Criteria** (what must be TRUE):
+  1. Qualifying setup alerts are sent through a production Telegram delivery adapter rather than renderer-only code paths.
+  2. Operator approve, reject, stop-adjust, and target-adjust actions are accepted through a live callback or webhook path.
+  3. Exit override actions can be issued through the runtime Telegram boundary and reach the workflow layer end to end.
+  4. The Telegram approval and override flow is verifiable outside deterministic unit-only seams.
+**Plans**: 0 plans
+
+Plans:
+- [ ] 06-01: Add runtime Telegram sending adapter and delivery integration
+- [ ] 06-02: Implement callback or webhook handling for operator decisions
+- [ ] 06-03: Wire stop, target, and override actions through the live operator loop
+
+### Phase 7: Served Dashboard Runtime Surface
+**Goal**: Make the secondary review dashboard reachable through a served HTTP application boundary instead of render-only composition code.
+**Depends on**: Phase 6
+**Requirements**: FLOW-06
+**Gap Closure**: Closes milestone audit gaps for dashboard runtime delivery and the secondary dashboard review flow.
+**Success Criteria** (what must be TRUE):
+  1. The application exposes a served HTTP entrypoint with dashboard routes registered.
+  2. Operators can access the read-only dashboard at runtime to review system status, logs, and completed paper trades.
+  3. The secondary dashboard review flow works through the served app boundary rather than direct renderer invocation.
+  4. Dashboard runtime availability is covered by verification evidence beyond composition-only tests.
+**Plans**: 0 plans
+
+Plans:
+- [ ] 07-01: Register dashboard routes on a served application boundary
+- [ ] 07-02: Validate read-only dashboard runtime access and review flows
+
+### Phase 8: Monitoring Verification Recovery
+**Goal**: Restore milestone-audit readiness by producing the missing Phase 5 verification evidence for monitoring, audit, and review capabilities.
+**Depends on**: Phase 7
+**Requirements**: OPS-01, OPS-02, OPS-03, OPS-04, OPS-05
+**Gap Closure**: Closes milestone audit gaps for the Phase 5 evidence chain and missing verification artifact.
+**Success Criteria** (what must be TRUE):
+  1. Phase 5 has a complete verification report that confirms degraded-state monitoring, audit review, error visibility, and P&L reporting.
+  2. Verification evidence references the served dashboard/runtime surfaces rather than only isolated tests and UAT.
+  3. The milestone audit can trace monitoring and review requirements to complete verification evidence.
+  4. Milestone verification flow no longer breaks on missing aggregation artifacts.
+**Plans**: 0 plans
+
+Plans:
+- [ ] 08-01: Re-verify Phase 5 monitoring and audit capabilities against shipped code
+- [ ] 08-02: Produce the missing verification artifact and trace evidence back to requirements
+
 ## Progress
 
 **Execution Order:**
@@ -111,3 +163,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. Strategy Validity and Ranking | 3/3 | Complete    | 2026-03-15 |
 | 4. Telegram Workflow and Paper Broker | 4/4 | Complete | 2026-03-16 |
 | 5. Monitoring, Audit, and Review Surface | 3/3 | Complete | 2026-03-17 |
+| 6. Telegram Runtime Delivery and Callback Wiring | 0/3 | Not Started | |
+| 7. Served Dashboard Runtime Surface | 0/2 | Not Started | |
+| 8. Monitoring Verification Recovery | 0/2 | Not Started | |
