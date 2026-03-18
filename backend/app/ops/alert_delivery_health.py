@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from .monitoring_models import AlertDeliverySnapshot
+
 
 @dataclass(frozen=True, slots=True)
 class AlertDeliveryFailure:
@@ -75,6 +77,43 @@ def build_alert_failure_log(
     return AlertFailureLog(recent_failures=tuple(ordered[:limit]))
 
 
+def build_alert_delivery_snapshot(
+    attempts: tuple[AlertDeliveryAttempt, ...],
+    *,
+    observed_at: datetime,
+) -> AlertDeliverySnapshot:
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("observed_at must be timezone-aware")
+
+    ordered = tuple(sorted(attempts, key=lambda attempt: attempt.occurred_at, reverse=True))
+    consecutive_failures = 0
+    last_success_at = None
+    last_failure_reason = None
+
+    for attempt in ordered:
+        if attempt.result is AlertDeliveryResult.FAILURE:
+            consecutive_failures += 1
+            if last_failure_reason is None:
+                last_failure_reason = attempt.reason
+        else:
+            last_success_at = attempt.occurred_at
+            break
+
+    if last_success_at is None:
+        last_success_at = next(
+            (attempt.occurred_at for attempt in ordered if attempt.result is AlertDeliveryResult.SUCCESS),
+            None,
+        )
+
+    return AlertDeliverySnapshot(
+        observed_at=observed_at,
+        last_attempt_at=ordered[0].occurred_at if ordered else None,
+        last_success_at=last_success_at,
+        consecutive_failures=consecutive_failures,
+        last_failure_reason=last_failure_reason,
+    )
+
+
 class AlertDeliveryHealthService:
     def build_report(
         self,
@@ -86,31 +125,11 @@ class AlertDeliveryHealthService:
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
         ordered = tuple(sorted(attempts, key=lambda attempt: attempt.occurred_at, reverse=True))
-        failures = tuple(
-            AlertDeliveryFailure(
-                observed_at=attempt.occurred_at,
-                reason=attempt.reason,
-                consecutive_failures=1,
-            )
-            for attempt in ordered
-            if attempt.result is AlertDeliveryResult.FAILURE
-        )[:failure_limit]
-
-        consecutive_failures = 0
-        for attempt in ordered:
-            if attempt.result is AlertDeliveryResult.FAILURE:
-                consecutive_failures += 1
-            else:
-                break
-
-        last_attempt_at = ordered[0].occurred_at if ordered else None
-        last_success_at = next(
-            (attempt.occurred_at for attempt in ordered if attempt.result is AlertDeliveryResult.SUCCESS),
-            None,
-        )
-        if consecutive_failures >= 3:
+        failures = self._recent_failures(ordered, limit=failure_limit)
+        snapshot = build_alert_delivery_snapshot(ordered, observed_at=observed_at)
+        if snapshot.consecutive_failures >= 3:
             summary = "Alert delivery failing repeatedly."
-        elif consecutive_failures > 0:
+        elif snapshot.consecutive_failures > 0:
             summary = "Alert delivery failures detected."
         elif failures:
             summary = "Alert delivery recovered after recent failures."
@@ -119,10 +138,39 @@ class AlertDeliveryHealthService:
 
         return AlertDeliveryHealthReport(
             snapshot=AlertDeliveryHealthSnapshot(
-                consecutive_failures=consecutive_failures,
+                consecutive_failures=snapshot.consecutive_failures,
                 summary=summary,
-                last_attempt_at=last_attempt_at,
-                last_success_at=last_success_at,
+                last_attempt_at=snapshot.last_attempt_at,
+                last_success_at=snapshot.last_success_at,
             ),
             recent_failures=failures,
         )
+
+    def _recent_failures(
+        self,
+        attempts: tuple[AlertDeliveryAttempt, ...],
+        *,
+        limit: int,
+    ) -> tuple[AlertDeliveryFailure, ...]:
+        failures: list[AlertDeliveryFailure] = []
+        consecutive_failures = 0
+        last_success_at = None
+
+        for attempt in reversed(attempts):
+            if attempt.result is AlertDeliveryResult.SUCCESS:
+                consecutive_failures = 0
+                last_success_at = attempt.occurred_at
+                continue
+
+            consecutive_failures += 1
+            failures.append(
+                AlertDeliveryFailure(
+                    observed_at=attempt.occurred_at,
+                    reason=attempt.reason,
+                    consecutive_failures=consecutive_failures,
+                    last_success_at=last_success_at,
+                )
+            )
+
+        failures.sort(key=lambda failure: failure.observed_at, reverse=True)
+        return tuple(failures[:limit])
