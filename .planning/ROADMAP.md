@@ -17,7 +17,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries. (completed 2026-03-17)
 - [ ] **Phase 6: Telegram Runtime Delivery and Callback Wiring** - Wire alert delivery and operator decisions into a live Telegram transport boundary for milestone-complete workflow coverage.
 - [x] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime. (completed 2026-03-18)
-- [ ] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete. (in progress)
+- [x] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete. (completed 2026-03-19)
 
 ## Phase Details
 
@@ -112,7 +112,7 @@ Plans:
   2. Operator approve, reject, stop-adjust, and target-adjust actions are accepted through a live callback or webhook path.
   3. Exit override actions can be issued through the runtime Telegram boundary and reach the workflow layer end to end.
   4. The Telegram approval and override flow is verifiable outside deterministic unit-only seams.
-**Plans**: 0 plans
+**Plans**: 2 plans
 
 Plans:
 - [ ] 06-01: Add runtime Telegram sending adapter and delivery integration
@@ -149,7 +149,7 @@ Plans:
 
 Plans:
 - [x] 08-01: Re-verify Phase 5 monitoring and audit capabilities against shipped code
-- [ ] 08-02: Produce the missing verification artifact and trace evidence back to requirements
+- [x] 08-02: Produce the missing verification artifact and trace evidence back to requirements
 
 ## Progress
 
@@ -165,4 +165,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 5. Monitoring, Audit, and Review Surface | 3/3 | Complete | 2026-03-17 |
 | 6. Telegram Runtime Delivery and Callback Wiring | 0/3 | Not Started | |
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
-| 8. Monitoring Verification Recovery | 1/2 | In Progress | |
+| 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
