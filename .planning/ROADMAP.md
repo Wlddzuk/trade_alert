@@ -17,7 +17,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 5: Monitoring, Audit, and Review Surface** - Add degraded-state handling, read-only dashboard, audit review, and paper P&L summaries. (completed 2026-03-17)
 - [ ] **Phase 6: Telegram Runtime Delivery and Callback Wiring** - Wire alert delivery and operator decisions into a live Telegram transport boundary for milestone-complete workflow coverage.
 - [x] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime. (completed 2026-03-18)
-- [ ] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete.
+- [ ] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete. (in progress)
 
 ## Phase Details
 
@@ -148,7 +148,7 @@ Plans:
 **Plans**: 0 plans
 
 Plans:
-- [ ] 08-01: Re-verify Phase 5 monitoring and audit capabilities against shipped code
+- [x] 08-01: Re-verify Phase 5 monitoring and audit capabilities against shipped code
 - [ ] 08-02: Produce the missing verification artifact and trace evidence back to requirements
 
 ## Progress
@@ -165,4 +165,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 5. Monitoring, Audit, and Review Surface | 3/3 | Complete | 2026-03-17 |
 | 6. Telegram Runtime Delivery and Callback Wiring | 0/3 | Not Started | |
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
-| 8. Monitoring Verification Recovery | 0/2 | Not Started | |
+| 8. Monitoring Verification Recovery | 1/2 | In Progress | |

@@ -51,11 +51,11 @@
 
 ### Monitoring and Audit
 
-- [ ] **OPS-01**: Operator can see when the system is degraded or untrusted because data freshness or alert-delivery thresholds are breached.
-- [ ] **OPS-02**: Operator can rely on scanner loop health being monitored during runtime.
-- [ ] **OPS-03**: Operator can review immutable audit logs with UTC timestamps for each paper trade lifecycle.
-- [ ] **OPS-04**: Operator can review paper P&L summaries.
-- [ ] **OPS-05**: Operator can review error logs for data, scanner, and alert failures.
+- [x] **OPS-01**: Operator can see when the system is degraded or untrusted because data freshness or alert-delivery thresholds are breached.
+- [x] **OPS-02**: Operator can rely on scanner loop health being monitored during runtime.
+- [x] **OPS-03**: Operator can review immutable audit logs with UTC timestamps for each paper trade lifecycle.
+- [x] **OPS-04**: Operator can review paper P&L summaries.
+- [x] **OPS-05**: Operator can review error logs for data, scanner, and alert failures.
 
 ## v2 Requirements
 
@@ -109,11 +109,11 @@
 | RISK-05 | Phase 4 | Complete |
 | RISK-06 | Phase 4 | Complete |
 | RISK-07 | Phase 4 | Complete |
-| OPS-01 | Phase 8 | Pending |
-| OPS-02 | Phase 8 | Pending |
-| OPS-03 | Phase 8 | Pending |
-| OPS-04 | Phase 8 | Pending |
-| OPS-05 | Phase 8 | Pending |
+| OPS-01 | Phase 8 | Complete |
+| OPS-02 | Phase 8 | Complete |
+| OPS-03 | Phase 8 | Complete |
+| OPS-04 | Phase 8 | Complete |
+| OPS-05 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total
