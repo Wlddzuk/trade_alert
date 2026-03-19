@@ -17,10 +17,10 @@ requirements:
 
 Phase 5 shipped summaries, UAT, deterministic tests, and dashboard composition code, but it never produced the required `05-VERIFICATION.md` artifact. This report reconstructs the missing evidence chain from the current codebase without expanding product scope.
 
-Evidence posture for this first recovery pass:
+Evidence posture for the recovered report:
 - Direct proof comes from Phase 5 code and deterministic automated tests.
-- This pass intentionally centers on the Phase 5 behavior seams themselves.
-- Downstream served-dashboard/runtime corroboration is added separately so it does not blur what Phase 5 directly implemented.
+- Served-dashboard/runtime corroboration is cited only where it confirms operator-visible review access through the later Phase 7 ASGI boundary.
+- Runtime corroboration is supporting evidence, not a substitute for the original Phase 5 behavior seams.
 
 ## Verdict
 
@@ -150,10 +150,61 @@ What this evidence proves:
 | OPS-04 | `backend/app/audit/pnl_summary.py`, `backend/app/audit/review_service.py` | `backend/tests/audit_review/test_pnl_summary.py` | Today-first realized paper P&L summaries and day-by-day history are available. |
 | OPS-05 | `backend/app/ops/incident_log.py`, `backend/app/ops/overview_service.py`, `backend/app/ops/alert_delivery_health.py` | `backend/tests/ops_dashboard/test_incident_log.py`, `backend/tests/ops_dashboard/test_alert_delivery_health.py`, `backend/tests/ops_dashboard/test_telegram_runtime_failures.py` | Reviewable logs exist for provider/data degradation, scanner-health failures, and alert-delivery failures. |
 
+## Served Runtime Corroboration
+
+The following evidence comes from Phase 7 and confirms that the already-shipped Phase 5 read models are reachable through an operator-visible, served, read-only dashboard boundary. It is supporting runtime proof only.
+
+### OPS-01 and OPS-02 runtime corroboration
+
+Supporting code references:
+- `backend/app/api/dashboard_routes.py` exposes `/dashboard` and builds the overview page from runtime snapshots plus incident-report data.
+- `backend/app/dashboard/renderers.py` renders the overview with status, scanner-loop summary, alert-delivery summary, provider freshness, and incident counts.
+- `backend/app/main.py` dispatches dashboard HTTP traffic through the served application boundary.
+
+Supporting automated tests:
+- `backend/tests/dashboard/test_dashboard_overview.py`
+  proves the served overview remains read-only, status-first, and includes degraded/offline monitoring states.
+- `backend/tests/dashboard/test_dashboard_serving.py`
+  proves the overview is reachable through the ASGI boundary after dashboard login.
+- `backend/tests/dashboard/test_dashboard_runtime_state.py`
+  proves the served dashboard preserves the last successful snapshot if runtime refresh fails.
+
+What the corroboration adds:
+- Confirms the operator-visible review surface exists at runtime, not only as internal Phase 5 models.
+- Confirms monitoring summaries survive the served dashboard boundary without becoming a control surface.
+
+### OPS-03, OPS-04, and OPS-05 runtime corroboration
+
+Supporting code references:
+- `backend/app/api/dashboard_routes.py` exposes dedicated served routes for `/dashboard/logs`, `/dashboard/trades`, and `/dashboard/pnl`.
+- `backend/app/dashboard/renderers.py` renders logs, trade review, and paper P&L as separate observational sections with no trade controls.
+- `backend/app/api/dashboard_runtime.py` composes runtime snapshots with incident, review-feed, and P&L services behind a refreshable runtime seam.
+
+Supporting automated tests:
+- `backend/tests/dashboard/test_dashboard_review_and_logs.py`
+  proves the logs, trade-review, and paper-P&L sections render together without forms, buttons, approval actions, or close-trade controls.
+- `backend/tests/dashboard/test_dashboard_serving.py`
+  proves `/dashboard/logs`, `/dashboard/trades`, and `/dashboard/pnl` are reachable through the served route layer with last-updated and auto-refresh cues.
+- `backend/tests/dashboard/test_dashboard_runtime_state.py`
+  proves stale runtime refresh falls back to the last successful review snapshot instead of failing closed after an initial success.
+
+What the corroboration adds:
+- Confirms immutable review logs, paper P&L, and incident history are operator-visible in the served read-only dashboard.
+- Confirms the review surface remains observational and secondary to Telegram, matching the intended Phase 5 posture.
+
 ## Automated Evidence Reviewed
 
 - `cd backend && uv run pytest tests/ops_dashboard/test_status_overview.py tests/ops_dashboard/test_incident_log.py tests/ops_dashboard/test_alert_delivery_health.py tests/ops_dashboard/test_telegram_runtime_failures.py tests/audit_review/test_trade_review_groups.py tests/audit_review/test_pnl_summary.py -q`
+- `cd backend && uv run pytest tests/dashboard/test_dashboard_overview.py tests/dashboard/test_dashboard_review_and_logs.py tests/dashboard/test_dashboard_serving.py tests/dashboard/test_dashboard_runtime_state.py -q`
 
-## Residual Notes
+## Residual Risks
 
-- This recovery pass documents direct Phase 5 implementation evidence only. Served-dashboard/runtime corroboration is intentionally tracked separately so direct behavior proof remains auditable on its own terms.
+- The default runtime snapshot provider still builds minimal/default read models unless a running application injects richer upstream sources. This does not negate the served-boundary proof, but it does mean operational usefulness depends on real runtime wiring.
+- Dashboard authentication is intentionally lightweight and local to the served review boundary. That matches the milestone scope and remains non-blocking for the recovered Phase 5 verification story.
+- Manual browser polish review may still be useful before archival, but the requirement evidence for `OPS-01` through `OPS-05` is already satisfied by deterministic tests plus the served-boundary corroboration above.
+
+## Conclusion
+
+Phase 5 now has an audit-ready verification artifact.
+
+Direct Phase 5 implementation evidence proves the monitoring, audit, review, and paper-P&L behaviors for `OPS-01` through `OPS-05`. Phase 7 adds served-runtime corroboration that the same read models are available through the shipped read-only dashboard boundary. The original milestone gap was missing traceability, and this recovered report closes that gap without adding new product scope.
