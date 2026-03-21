@@ -36,7 +36,7 @@
 - [ ] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
 - [ ] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
 - [x] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
-- [ ] **FLOW-05**: Operator can override exit behavior at any time.
+- [x] **FLOW-05**: Operator can override exit behavior at any time.
 - [x] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
 
 ### Risk and Paper Trading
@@ -96,12 +96,12 @@
 | SIG-03 | Phase 3 | Complete |
 | SIG-04 | Phase 3 | Complete |
 | SIG-05 | Phase 4 | Complete |
-| FLOW-01 | Phase 6 | Pending |
-| FLOW-02 | Phase 6 | Pending |
-| FLOW-03 | Phase 6 | Pending |
+| FLOW-01 | Phase 9 | Pending |
+| FLOW-02 | Phase 9 | Pending |
+| FLOW-03 | Phase 9 | Pending |
 | FLOW-04 | Phase 4 | Complete |
-| FLOW-05 | Phase 6 | Pending |
-| FLOW-06 | Phase 7 | Complete |
+| FLOW-05 | Phase 6 | Complete |
+| FLOW-06 | Phase 10 | Pending |
 | RISK-01 | Phase 4 | Complete |
 | RISK-02 | Phase 4 | Complete |
 | RISK-03 | Phase 4 | Complete |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-18 after milestone gap planning*
+*Last updated: 2026-03-20 after milestone gap planning*
