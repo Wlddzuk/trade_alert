@@ -3,19 +3,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.alerts.action_execution import TelegramActionExecutor
 from app.alerts.action_resolution import TelegramActionRegistry
 from app.alerts.models import PreEntryAlertState, TradeProposal, project_pre_entry_alert
-from app.api import TelegramCallbackHandler, TelegramRoutes
 from app.audit.lifecycle_log import LifecycleEventType, LifecycleLog
-from app.main import create_app
-from app.paper.broker import PaperBroker
+from app.main import create_telegram_operator_runtime
 from app.providers.models import CatalystTag
 from app.scanner.models import CandidateRow
 from app.scanner.strategy_models import SetupValidity
 from app.scanner.strategy_projection import StrategyProjection
 from app.scanner.strategy_tags import StrategyStageTag
 from app.scanner.trigger_logic import TriggerEvaluation
+from tests.operator_workflow.test_telegram_alert_emission_flow import FakeTelegramTransport, _qualifying_setup
 
 
 def _actionable_alert(*, symbol: str = "AKRX", observed_at: datetime | None = None):
@@ -74,18 +72,20 @@ def _actionable_alert(*, symbol: str = "AKRX", observed_at: datetime | None = No
 
 
 def _app_with_runtime():
-    registry = TelegramActionRegistry()
-    lifecycle_log = LifecycleLog()
-    executor = TelegramActionExecutor(
-        registry=registry,
-        broker=PaperBroker(),
-        lifecycle_log=lifecycle_log,
-        trade_id_factory=lambda alert_id: f"paper-{alert_id}",
-        entry_quantity=50,
+    runtime = create_telegram_operator_runtime(
+        transport=FakeTelegramTransport([]),
+        operator_chat_id="operator-chat",
     )
-    handler = TelegramCallbackHandler(executor=executor)
-    app = create_app(telegram=TelegramRoutes(callback_handler=handler))
-    return app, registry, lifecycle_log
+    return runtime.app, runtime.registry, runtime.lifecycle_log
+
+
+def _emit_actionable_alert(*, symbol: str = "AKRX", transport_outcomes: list[str] | None = None):
+    runtime = create_telegram_operator_runtime(
+        transport=FakeTelegramTransport(transport_outcomes or ["success"]),
+        operator_chat_id="operator-chat",
+    )
+    outcome = runtime.feed_service.emit_qualifying_setups((_qualifying_setup(symbol=symbol),))[0]
+    return runtime, outcome
 
 
 def test_app_exposes_a_minimal_telegram_update_surface() -> None:
@@ -98,27 +98,56 @@ def test_app_exposes_a_minimal_telegram_update_surface() -> None:
 
 
 def test_approve_callback_opens_trade_and_records_lifecycle_events() -> None:
-    app, registry, lifecycle_log = _app_with_runtime()
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    runtime, outcome = _emit_actionable_alert()
+    app = runtime.app
 
     response = app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-approve-1",
-                "data": f"entry:ap:{alert.alert_id}",
+                "data": f"entry:ap:{outcome.alert.alert_id}",
             }
         }
     )
 
+    assert outcome.emitted is True
     assert response.status_code == 200
     assert response.body["status"] == "accepted"
     assert "Entry approved" in str(response.body["message"])
-    events = lifecycle_log.all_events()
+    events = runtime.lifecycle_log.all_events()
     assert [event.event_type for event in events] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
         LifecycleEventType.ENTRY_DECISION,
         LifecycleEventType.TRADE_OPENED,
     ]
+    assert events[1].alert_id == outcome.alert.alert_id
+    assert events[2].alert_id == outcome.alert.alert_id
+    assert events[2].trade_id == f"paper-{outcome.alert.alert_id}"
+
+
+def test_reject_callback_marks_emitted_alert_terminal_without_opening_trade() -> None:
+    runtime, outcome = _emit_actionable_alert(symbol="BMEA")
+
+    response = runtime.app.telegram.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-reject-1",
+                "data": f"entry:rj:{outcome.alert.alert_id}",
+            }
+        }
+    )
+
+    assert outcome.emitted is True
+    assert response.status_code == 200
+    assert response.body["status"] == "accepted"
+    assert "Entry rejected" in str(response.body["message"])
+    events = runtime.lifecycle_log.all_events()
+    assert [event.event_type for event in events] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
+        LifecycleEventType.ENTRY_DECISION,
+    ]
+    assert events[1].alert_id == outcome.alert.alert_id
+    assert events[1].payload_map["rejection_reason"] == "operator_rejected"
 
 
 def test_stale_entry_callback_returns_current_state_feedback() -> None:
@@ -162,20 +191,18 @@ def test_duplicate_callback_query_is_idempotent() -> None:
 
 
 def test_close_trade_callback_reaches_broker_sink_end_to_end() -> None:
-    app, registry, _ = _app_with_runtime()
-    alert = _actionable_alert()
-    registry.register_alert(alert)
-    app.telegram.handle_update(
+    runtime, outcome = _emit_actionable_alert()
+    runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-open-1",
-                "data": f"entry:ap:{alert.alert_id}",
+                "data": f"entry:ap:{outcome.alert.alert_id}",
             }
         }
     )
-    trade_id = f"paper-{alert.alert_id}"
+    trade_id = f"paper-{outcome.alert.alert_id}"
 
-    response = app.telegram.handle_update(
+    response = runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-close-1",
@@ -190,15 +217,13 @@ def test_close_trade_callback_reaches_broker_sink_end_to_end() -> None:
 
 
 def test_adjust_callbacks_are_parsed_and_return_follow_up_status() -> None:
-    app, registry, _ = _app_with_runtime()
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    runtime, outcome = _emit_actionable_alert()
 
-    response = app.telegram.handle_update(
+    response = runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-adjust-1",
-                "data": f"entry:ad:{alert.alert_id}",
+                "data": f"entry:ad:{outcome.alert.alert_id}",
                 "from": {"id": "operator-0"},
             }
         }
@@ -210,22 +235,20 @@ def test_adjust_callbacks_are_parsed_and_return_follow_up_status() -> None:
 
 
 def test_adjustment_message_flow_requires_confirmation_before_opening_trade() -> None:
-    app, registry, lifecycle_log = _app_with_runtime()
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    runtime, outcome = _emit_actionable_alert()
 
-    start = app.telegram.handle_update(
+    start = runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-adjust-2",
-                "data": f"entry:ad:{alert.alert_id}",
+                "data": f"entry:ad:{outcome.alert.alert_id}",
                 "from": {"id": "operator-1"},
             }
         }
     )
     assert start.body["status"] == "needs_input"
 
-    stop = app.telegram.handle_update(
+    stop = runtime.app.telegram.handle_update(
         {
             "message": {
                 "chat": {"id": "operator-1"},
@@ -236,7 +259,7 @@ def test_adjustment_message_flow_requires_confirmation_before_opening_trade() ->
     assert stop.body["status"] == "needs_input"
     assert "current target" in str(stop.body["message"]).lower()
 
-    target = app.telegram.handle_update(
+    target = runtime.app.telegram.handle_update(
         {
             "message": {
                 "chat": {"id": "operator-1"},
@@ -247,7 +270,7 @@ def test_adjustment_message_flow_requires_confirmation_before_opening_trade() ->
     assert target.body["status"] == "needs_input"
     assert "confirm adjusted entry" in str(target.body["message"]).lower()
 
-    confirm = app.telegram.handle_update(
+    confirm = runtime.app.telegram.handle_update(
         {
             "message": {
                 "chat": {"id": "operator-1"},
@@ -257,11 +280,14 @@ def test_adjustment_message_flow_requires_confirmation_before_opening_trade() ->
     )
     assert confirm.body["status"] == "accepted"
     assert "adjusted entry confirmed" in str(confirm.body["message"]).lower()
-    events = lifecycle_log.all_events()
+    events = runtime.lifecycle_log.all_events()
     assert [event.event_type for event in events] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
         LifecycleEventType.ENTRY_DECISION,
         LifecycleEventType.TRADE_OPENED,
     ]
+    assert events[1].alert_id == outcome.alert.alert_id
+    assert events[2].alert_id == outcome.alert.alert_id
 
 
 def test_adjustment_session_reports_expired_and_stale_failures_clearly() -> None:
@@ -314,20 +340,18 @@ def test_adjustment_session_reports_expired_and_stale_failures_clearly() -> None
 
 
 def test_trade_override_message_flow_updates_stop_and_target_levels() -> None:
-    app, registry, _ = _app_with_runtime()
-    alert = _actionable_alert()
-    registry.register_alert(alert)
-    app.telegram.handle_update(
+    runtime, outcome = _emit_actionable_alert()
+    runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-open-override-1",
-                "data": f"entry:ap:{alert.alert_id}",
+                "data": f"entry:ap:{outcome.alert.alert_id}",
             }
         }
     )
-    trade_id = f"paper-{alert.alert_id}"
+    trade_id = f"paper-{outcome.alert.alert_id}"
 
-    start_stop = app.telegram.handle_update(
+    start_stop = runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-stop-start-1",
@@ -339,7 +363,7 @@ def test_trade_override_message_flow_updates_stop_and_target_levels() -> None:
     assert start_stop.body["status"] == "needs_input"
     assert "new stop price" in str(start_stop.body["message"]).lower()
 
-    stop_reply = app.telegram.handle_update(
+    stop_reply = runtime.app.telegram.handle_update(
         {
             "message": {
                 "chat": {"id": "operator-override"},
@@ -351,7 +375,7 @@ def test_trade_override_message_flow_updates_stop_and_target_levels() -> None:
     assert "stop updated" in str(stop_reply.body["message"]).lower()
     assert "12.05" in str(stop_reply.body["message"])
 
-    start_target = app.telegram.handle_update(
+    start_target = runtime.app.telegram.handle_update(
         {
             "callback_query": {
                 "id": "cb-target-start-1",
@@ -363,7 +387,7 @@ def test_trade_override_message_flow_updates_stop_and_target_levels() -> None:
     assert start_target.body["status"] == "needs_input"
     assert "new target price" in str(start_target.body["message"]).lower()
 
-    target_reply = app.telegram.handle_update(
+    target_reply = runtime.app.telegram.handle_update(
         {
             "message": {
                 "chat": {"id": "operator-override"},

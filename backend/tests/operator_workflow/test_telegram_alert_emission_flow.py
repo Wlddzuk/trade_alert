@@ -241,11 +241,43 @@ def test_runtime_feed_emission_keeps_alert_available_for_later_operator_approval
     assert response.status_code == 200
     assert response.body["status"] == "accepted"
     assert transport.requests[0].chat_id == "operator-chat"
-    assert [event.event_type for event in runtime.lifecycle_log.all_events()] == [
+    events = runtime.lifecycle_log.all_events()
+    assert [event.event_type for event in events] == [
         LifecycleEventType.PRE_ENTRY_ALERT,
         LifecycleEventType.ENTRY_DECISION,
         LifecycleEventType.TRADE_OPENED,
     ]
+    assert events[1].alert_id == outcome.alert.alert_id
+    assert events[2].alert_id == outcome.alert.alert_id
+    assert events[2].trade_id == f"paper-{outcome.alert.alert_id}"
+
+
+def test_runtime_feed_emission_keeps_alert_available_for_later_operator_rejection() -> None:
+    runtime = create_telegram_operator_runtime(
+        transport=FakeTelegramTransport(["success"]),
+        operator_chat_id="operator-chat",
+    )
+    outcome = runtime.feed_service.emit_qualifying_setups((_qualifying_setup(symbol="BMEA"),))[0]
+
+    response = runtime.telegram_routes.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-runtime-reject-1",
+                "data": f"entry:rj:{outcome.alert.alert_id}",
+            }
+        }
+    )
+
+    assert outcome.emitted is True
+    assert response.status_code == 200
+    assert response.body["status"] == "accepted"
+    events = runtime.lifecycle_log.all_events()
+    assert [event.event_type for event in events] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
+        LifecycleEventType.ENTRY_DECISION,
+    ]
+    assert events[1].alert_id == outcome.alert.alert_id
+    assert events[1].payload_map["rejection_reason"] == "operator_rejected"
 
 
 def test_suppressed_or_failed_paths_do_not_record_false_emitted_alert_evidence() -> None:
@@ -258,7 +290,13 @@ def test_suppressed_or_failed_paths_do_not_record_false_emitted_alert_evidence()
     suppressed = runtime.feed_service.emit_qualifying_setups(
         (_qualifying_setup(symbol="LTRY", disposition=EntryDisposition.REJECTED),)
     )[0]
+    failed_resolution = runtime.registry.resolve(parse_callback_data("cb-failed-runtime-1", f"entry:ap:{failed.alert.alert_id}"))
+    suppressed_resolution = runtime.registry.resolve(
+        parse_callback_data("cb-suppressed-runtime-1", f"entry:ad:{suppressed.alert.alert_id}")
+    )
 
     assert failed.failed is True
     assert suppressed.suppressed is True
+    assert failed_resolution.status is ResolutionStatus.UNKNOWN
+    assert suppressed_resolution.status is ResolutionStatus.UNKNOWN
     assert runtime.lifecycle_log.all_events() == ()
