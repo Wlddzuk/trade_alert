@@ -184,7 +184,7 @@ Plans:
 
 Plans:
 - [x] 10-01: Add default dashboard runtime composition and config-backed auth
-- [ ] 10-02: Wire real monitoring and review sources into served dashboard proof
+- [x] 10-02: Wire real monitoring and review sources into served dashboard proof
 
 ### Phase 11: Audit Traceability Closure
 **Goal**: Close the remaining verification-chain and planning-traceability gaps by publishing the missing Phase 8 verification artifact and aligning roadmap and requirements state with shipped milestone work.
@@ -196,7 +196,11 @@ Plans:
   2. ROADMAP.md and REQUIREMENTS.md reflect actual completed and pending milestone work consistently.
   3. Milestone audit can treat the verification chain as complete and internally consistent.
   4. Milestone archival is no longer blocked by missing verification artifacts or stale planning state.
-**Plans**: 0 plans
+**Plans**: 2 plans
+
+Plans:
+- [ ] 11-01: Publish the missing Phase 8 verification artifact
+- [ ] 11-02: Reconcile roadmap, requirements, state, and milestone audit to current truth
 
 ## Progress
 
@@ -215,4 +219,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
 | 9. Telegram Alert Emission Closure | 2/2 | Complete | 2026-03-22 |
 | 10. Dashboard Runtime Composition Closure | 2/2 | Complete   | 2026-03-22 |
-| 11. Audit Traceability Closure | 0/0 | Not Started | |
+| 11. Audit Traceability Closure | 0/2 | Planned | |
