@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import pytest
 
 from app.api import DashboardAuthSettings, DashboardRuntimeSnapshotProvider
 from app.main import create_app
@@ -14,12 +15,12 @@ def test_dashboard_requires_configuration_and_fails_closed() -> None:
     assert "Dashboard access is not configured." in body
 
 
-def test_dashboard_login_sets_session_cookie_and_reuses_browser_session() -> None:
-    settings = DashboardAuthSettings(password="swing", session_secret="phase-07")
-    app = create_app(
-        dashboard_snapshot_provider=DashboardRuntimeSnapshotProvider(),
-        dashboard_auth_settings=settings,
-    )
+def test_dashboard_login_sets_session_cookie_and_reuses_browser_session_from_app_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "swing")
+    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "phase-10-session")
+    app = create_app()
 
     denied_status, _, denied_body = _request("GET", "/dashboard", app=app)
     assert denied_status == 401

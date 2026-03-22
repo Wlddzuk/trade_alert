@@ -19,6 +19,7 @@ from app.api import (
 )
 from app.api.dashboard_runtime import create_default_dashboard_runtime
 from app.audit.lifecycle_log import LifecycleLog
+from app.config import AppConfig
 from app.paper.broker import PaperBroker
 from app.scanner.feed_service import CandidateFeedService
 
@@ -83,14 +84,21 @@ def create_app(
     dashboard: DashboardRoutes | None = None,
     dashboard_snapshot_provider: DashboardRuntimeSnapshotProvider | None = None,
     dashboard_auth_settings: DashboardAuthSettings | None = None,
+    app_config: AppConfig | None = None,
     telegram: TelegramRoutes | None = None,
 ) -> BuySignalApp:
+    config = app_config or AppConfig.from_env()
     default_dashboard_runtime = create_default_dashboard_runtime()
     return BuySignalApp(
         dashboard=dashboard
         or DashboardRoutes(
             snapshot_provider=dashboard_snapshot_provider or default_dashboard_runtime.snapshot_provider(),
-            auth_settings=dashboard_auth_settings,
+            auth_settings=dashboard_auth_settings
+            or DashboardAuthSettings(
+                password=config.dashboard_password,
+                session_secret=config.dashboard_session_secret,
+                session_cookie_name=config.dashboard_session_cookie_name,
+            ),
         ),
         telegram=telegram,
     )

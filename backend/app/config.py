@@ -75,6 +75,9 @@ class BenzingaConfig:
 class AppConfig:
     polygon: PolygonConfig
     benzinga: BenzingaConfig
+    dashboard_password: str | None
+    dashboard_session_secret: str | None
+    dashboard_session_cookie_name: str
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "AppConfig":
@@ -82,4 +85,11 @@ class AppConfig:
         return cls(
             polygon=PolygonConfig.from_env(source),
             benzinga=BenzingaConfig.from_env(source),
+            dashboard_password=_clean_optional(source.get("DASHBOARD_PASSWORD")),
+            dashboard_session_secret=_clean_optional(source.get("DASHBOARD_SESSION_SECRET")),
+            dashboard_session_cookie_name=source.get(
+                "DASHBOARD_SESSION_COOKIE_NAME",
+                "buy_signal_dashboard_session",
+            ).strip()
+            or "buy_signal_dashboard_session",
         )

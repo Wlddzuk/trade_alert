@@ -98,6 +98,28 @@ def test_dashboard_section_routes_render_read_only_review_flow() -> None:
     assert "Read-only dashboard" in pnl_body
 
 
+def test_default_app_serves_dashboard_after_config_backed_login(monkeypatch) -> None:
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "swing")
+    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "phase-10-session")
+    app = create_app()
+
+    login_status, login_headers, _ = _request(
+        "POST",
+        "/dashboard/login",
+        app=app,
+        form={"password": "swing"},
+    )
+
+    assert login_status == 303
+    cookie = login_headers["set-cookie"]
+
+    dashboard_status, _, dashboard_body = _request("GET", "/dashboard", app=app, cookie=cookie)
+
+    assert dashboard_status == 200
+    assert "Status Overview" in dashboard_body
+    assert "Read-only dashboard" in dashboard_body
+
+
 def test_dashboard_stale_snapshot_route_uses_last_successful_snapshot() -> None:
     snapshot = _runtime_snapshot()
     calls = {"count": 0}
