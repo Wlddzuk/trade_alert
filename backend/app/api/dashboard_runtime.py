@@ -83,6 +83,9 @@ class DashboardRuntimeComposition:
     def record_alert_delivery_attempt(self, attempt: AlertDeliveryAttempt) -> None:
         self._alert_delivery_attempts.append(attempt)
 
+    def record_alert_delivery_attempts(self, attempts: tuple[AlertDeliveryAttempt, ...]) -> None:
+        self._alert_delivery_attempts.extend(attempts)
+
     def snapshot_provider(self) -> "DashboardRuntimeSnapshotProvider":
         return DashboardRuntimeSnapshotProvider(snapshot_factory=self.build_snapshot)
 
@@ -148,5 +151,17 @@ class DashboardRuntimeSnapshotProvider:
         return snapshot
 
 
+_DEFAULT_DASHBOARD_RUNTIME: DashboardRuntimeComposition | None = None
+
+
 def create_default_dashboard_runtime() -> DashboardRuntimeComposition:
-    return DashboardRuntimeComposition()
+    global _DEFAULT_DASHBOARD_RUNTIME
+    if _DEFAULT_DASHBOARD_RUNTIME is None:
+        _DEFAULT_DASHBOARD_RUNTIME = DashboardRuntimeComposition()
+    return _DEFAULT_DASHBOARD_RUNTIME
+
+
+def reset_default_dashboard_runtime() -> DashboardRuntimeComposition:
+    global _DEFAULT_DASHBOARD_RUNTIME
+    _DEFAULT_DASHBOARD_RUNTIME = DashboardRuntimeComposition()
+    return _DEFAULT_DASHBOARD_RUNTIME

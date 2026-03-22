@@ -17,7 +17,7 @@ from app.api import (
     TelegramCallbackHandler,
     TelegramRoutes,
 )
-from app.api.dashboard_runtime import create_default_dashboard_runtime
+from app.api.dashboard_runtime import DashboardRuntimeComposition, create_default_dashboard_runtime
 from app.audit.lifecycle_log import LifecycleLog
 from app.config import AppConfig
 from app.paper.broker import PaperBroker
@@ -82,17 +82,18 @@ class BuySignalApp:
 def create_app(
     *,
     dashboard: DashboardRoutes | None = None,
+    dashboard_runtime: DashboardRuntimeComposition | None = None,
     dashboard_snapshot_provider: DashboardRuntimeSnapshotProvider | None = None,
     dashboard_auth_settings: DashboardAuthSettings | None = None,
     app_config: AppConfig | None = None,
     telegram: TelegramRoutes | None = None,
 ) -> BuySignalApp:
     config = app_config or AppConfig.from_env()
-    default_dashboard_runtime = create_default_dashboard_runtime()
+    composed_dashboard_runtime = dashboard_runtime or create_default_dashboard_runtime()
     return BuySignalApp(
         dashboard=dashboard
         or DashboardRoutes(
-            snapshot_provider=dashboard_snapshot_provider or default_dashboard_runtime.snapshot_provider(),
+            snapshot_provider=dashboard_snapshot_provider or composed_dashboard_runtime.snapshot_provider(),
             auth_settings=dashboard_auth_settings
             or DashboardAuthSettings(
                 password=config.dashboard_password,
@@ -123,13 +124,15 @@ def create_telegram_operator_runtime(
     transport: TelegramTransport,
     operator_chat_id: str,
     registry: TelegramActionRegistry | None = None,
+    dashboard_runtime: DashboardRuntimeComposition | None = None,
     lifecycle_log: LifecycleLog | None = None,
     delivery_state: TelegramDeliveryState | None = None,
     broker: PaperBroker | None = None,
     entry_quantity: int = 50,
 ) -> TelegramOperatorRuntime:
     registry = registry or TelegramActionRegistry()
-    lifecycle_log = lifecycle_log or LifecycleLog()
+    dashboard_runtime = dashboard_runtime or DashboardRuntimeComposition()
+    lifecycle_log = lifecycle_log or dashboard_runtime.lifecycle_log
     delivery_state = delivery_state or TelegramDeliveryState()
     delivery_service = TelegramRuntimeDeliveryService(transport)
     emission_service = TelegramAlertEmissionService(
@@ -138,6 +141,7 @@ def create_telegram_operator_runtime(
         registry=registry,
         operator_chat_id=operator_chat_id,
         lifecycle_log=lifecycle_log,
+        delivery_attempt_recorder=dashboard_runtime.record_alert_delivery_attempts,
     )
     feed_service = CandidateFeedService(qualifying_alert_emitter=emission_service)
     executor = TelegramActionExecutor(
@@ -149,7 +153,7 @@ def create_telegram_operator_runtime(
     )
     callback_handler = TelegramCallbackHandler(executor=executor)
     telegram_routes = TelegramRoutes(callback_handler=callback_handler)
-    app = create_app(telegram=telegram_routes)
+    app = create_app(telegram=telegram_routes, dashboard_runtime=dashboard_runtime)
     return TelegramOperatorRuntime(
         app=app,
         telegram_routes=telegram_routes,
