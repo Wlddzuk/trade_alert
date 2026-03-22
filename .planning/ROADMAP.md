@@ -150,8 +150,6 @@ Plans:
   2. Verification evidence references the served dashboard/runtime surfaces rather than only isolated tests and UAT.
   3. The milestone audit can trace monitoring and review requirements to complete verification evidence.
   4. Milestone verification flow no longer breaks on missing aggregation artifacts.
-**Plans**: 0 plans
-
 Plans:
 - [x] 08-01: Re-verify Phase 5 monitoring and audit capabilities against shipped code
 - [x] 08-02: Produce the missing verification artifact and trace evidence back to requirements
@@ -166,7 +164,11 @@ Plans:
   2. Approval and adjustment callbacks are verified against alert state produced by that same live emission path rather than test-only pre-registration.
   3. Telegram operator entry flow is evidenced end to end from qualifying setup to approval or adjusted approval.
   4. Milestone audit can mark `FLOW-01`, `FLOW-02`, and `FLOW-03` satisfied without relying on partial integration arguments.
-**Plans**: 0 plans
+**Plans**: 2 plans
+
+Plans:
+- [ ] 09-01: Implement qualifying-alert emission over delivery and registry seams
+- [ ] 09-02: Replace partial callback proof with emission-driven approval and adjustment evidence
 
 ### Phase 10: Dashboard Runtime Composition Closure
 **Goal**: Close the remaining dashboard integration gap by making the default served app compose usable auth and real monitoring/review snapshot providers for operator-facing runtime review.
@@ -207,6 +209,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 6. Telegram Runtime Delivery and Callback Wiring | 5/5 | Complete | 2026-03-18 |
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
-| 9. Telegram Alert Emission Closure | 0/0 | Not Started | |
+| 9. Telegram Alert Emission Closure | 0/2 | Not Started | |
 | 10. Dashboard Runtime Composition Closure | 0/0 | Not Started | |
 | 11. Audit Traceability Closure | 0/0 | Not Started | |
