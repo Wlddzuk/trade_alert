@@ -120,9 +120,10 @@ class BenzingaNewsProvider(NewsProvider):
             "token": self._config.api_key,
             "tickers": ",".join(normalized_symbols),
             "pageSize": limit,
+            "displayOutput": "json",
         }
         if updated_since is not None:
-            params["updatedSince"] = updated_since.astimezone(UTC).isoformat()
+            params["updatedSince"] = int(updated_since.timestamp())
 
         try:
             payload = await self._fetch_json(
