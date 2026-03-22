@@ -11,6 +11,7 @@ from .feed_store import CandidateFeedStore
 from .models import CandidateRow
 
 if TYPE_CHECKING:
+    from app.alerts.alert_emission import AlertEmissionResult, QualifyingSetup, TelegramAlertEmissionService
     from .strategy_projection import StrategyProjection
 
 
@@ -28,8 +29,14 @@ class CandidateFeedSnapshot:
 
 
 class CandidateFeedService:
-    def __init__(self, store: CandidateFeedStore | None = None) -> None:
+    def __init__(
+        self,
+        store: CandidateFeedStore | None = None,
+        *,
+        qualifying_alert_emitter: "TelegramAlertEmissionService | None" = None,
+    ) -> None:
         self._store = store or CandidateFeedStore()
+        self._qualifying_alert_emitter = qualifying_alert_emitter
 
     @property
     def store(self) -> CandidateFeedStore:
@@ -83,6 +90,14 @@ class CandidateFeedService:
                 reverse=True,
             )
         )
+
+    def emit_qualifying_setups(
+        self,
+        setups: Iterable["QualifyingSetup"],
+    ) -> tuple["AlertEmissionResult", ...]:
+        if self._qualifying_alert_emitter is None:
+            raise RuntimeError("qualifying_alert_emitter is not configured")
+        return tuple(self._qualifying_alert_emitter.emit(setup) for setup in setups)
 
     def _ensure_aware(self, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:

@@ -2,8 +2,24 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
-from app.api import DashboardAuthSettings, DashboardRoutes, DashboardRuntimeSnapshotProvider, TelegramRoutes
+from app.alerts.action_execution import TelegramActionExecutor
+from app.alerts.action_resolution import TelegramActionRegistry
+from app.alerts.alert_emission import TelegramAlertEmissionService
+from app.alerts.delivery_state import TelegramDeliveryState
+from app.alerts.telegram_runtime import TelegramRuntimeDeliveryService
+from app.alerts.telegram_transport import TelegramTransport
+from app.api import (
+    DashboardAuthSettings,
+    DashboardRoutes,
+    DashboardRuntimeSnapshotProvider,
+    TelegramCallbackHandler,
+    TelegramRoutes,
+)
+from app.audit.lifecycle_log import LifecycleLog
+from app.paper.broker import PaperBroker
+from app.scanner.feed_service import CandidateFeedService
 
 
 class BuySignalApp:
@@ -75,6 +91,66 @@ def create_app(
             auth_settings=dashboard_auth_settings,
         ),
         telegram=telegram,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TelegramOperatorRuntime:
+    app: BuySignalApp
+    telegram_routes: TelegramRoutes
+    callback_handler: TelegramCallbackHandler
+    executor: TelegramActionExecutor
+    registry: TelegramActionRegistry
+    lifecycle_log: LifecycleLog
+    delivery_state: TelegramDeliveryState
+    delivery_service: TelegramRuntimeDeliveryService
+    emission_service: TelegramAlertEmissionService
+    feed_service: CandidateFeedService
+
+
+def create_telegram_operator_runtime(
+    *,
+    transport: TelegramTransport,
+    operator_chat_id: str,
+    registry: TelegramActionRegistry | None = None,
+    lifecycle_log: LifecycleLog | None = None,
+    delivery_state: TelegramDeliveryState | None = None,
+    broker: PaperBroker | None = None,
+    entry_quantity: int = 50,
+) -> TelegramOperatorRuntime:
+    registry = registry or TelegramActionRegistry()
+    lifecycle_log = lifecycle_log or LifecycleLog()
+    delivery_state = delivery_state or TelegramDeliveryState()
+    delivery_service = TelegramRuntimeDeliveryService(transport)
+    emission_service = TelegramAlertEmissionService(
+        delivery_state=delivery_state,
+        delivery_service=delivery_service,
+        registry=registry,
+        operator_chat_id=operator_chat_id,
+        lifecycle_log=lifecycle_log,
+    )
+    feed_service = CandidateFeedService(qualifying_alert_emitter=emission_service)
+    executor = TelegramActionExecutor(
+        registry=registry,
+        broker=broker or PaperBroker(),
+        lifecycle_log=lifecycle_log,
+        trade_id_factory=lambda alert_id: f"paper-{alert_id}",
+        entry_quantity=entry_quantity,
+    )
+    callback_handler = TelegramCallbackHandler(executor=executor)
+    telegram_routes = TelegramRoutes(callback_handler=callback_handler)
+    app = create_app(telegram=telegram_routes)
+    return TelegramOperatorRuntime(
+        app=app,
+        telegram_routes=telegram_routes,
+        callback_handler=callback_handler,
+        executor=executor,
+        registry=registry,
+        lifecycle_log=lifecycle_log,
+        delivery_state=delivery_state,
+        delivery_service=delivery_service,
+        emission_service=emission_service,
+        feed_service=feed_service,
     )
 
 

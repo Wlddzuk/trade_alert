@@ -13,6 +13,8 @@ from app.alerts.telegram_transport import (
     TelegramTransportReceipt,
     TelegramTransportRequest,
 )
+from app.audit.lifecycle_log import LifecycleEventType
+from app.main import create_telegram_operator_runtime
 from app.providers.models import CatalystTag
 from app.risk.models import (
     EntryDisposition,
@@ -200,3 +202,63 @@ def test_emitter_failed_send_does_not_register_callback_state() -> None:
     assert result.registered is False
     assert resolved.status is ResolutionStatus.UNKNOWN
 
+
+def test_feed_service_emits_real_qualifying_setup_and_records_lifecycle_evidence() -> None:
+    runtime = create_telegram_operator_runtime(
+        transport=FakeTelegramTransport(["success"]),
+        operator_chat_id="operator-chat",
+    )
+
+    outcomes = runtime.feed_service.emit_qualifying_setups((_qualifying_setup(),))
+
+    assert len(outcomes) == 1
+    outcome = outcomes[0]
+    assert outcome.emitted is True
+    assert outcome.lifecycle_recorded is True
+    assert [event.event_type for event in runtime.lifecycle_log.all_events()] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
+    ]
+
+
+def test_runtime_feed_emission_keeps_alert_available_for_later_operator_approval() -> None:
+    transport = FakeTelegramTransport(["success"])
+    runtime = create_telegram_operator_runtime(
+        transport=transport,
+        operator_chat_id="operator-chat",
+    )
+    outcome = runtime.feed_service.emit_qualifying_setups((_qualifying_setup(),))[0]
+
+    response = runtime.telegram_routes.handle_update(
+        {
+            "callback_query": {
+                "id": "cb-runtime-approve-1",
+                "data": f"entry:ap:{outcome.alert.alert_id}",
+            }
+        }
+    )
+
+    assert outcome.emitted is True
+    assert response.status_code == 200
+    assert response.body["status"] == "accepted"
+    assert transport.requests[0].chat_id == "operator-chat"
+    assert [event.event_type for event in runtime.lifecycle_log.all_events()] == [
+        LifecycleEventType.PRE_ENTRY_ALERT,
+        LifecycleEventType.ENTRY_DECISION,
+        LifecycleEventType.TRADE_OPENED,
+    ]
+
+
+def test_suppressed_or_failed_paths_do_not_record_false_emitted_alert_evidence() -> None:
+    runtime = create_telegram_operator_runtime(
+        transport=FakeTelegramTransport(["telegram_timeout", "telegram_timeout", "telegram_timeout"]),
+        operator_chat_id="operator-chat",
+    )
+
+    failed = runtime.feed_service.emit_qualifying_setups((_qualifying_setup(symbol="RZLV"),))[0]
+    suppressed = runtime.feed_service.emit_qualifying_setups(
+        (_qualifying_setup(symbol="LTRY", disposition=EntryDisposition.REJECTED),)
+    )[0]
+
+    assert failed.failed is True
+    assert suppressed.suppressed is True
+    assert runtime.lifecycle_log.all_events() == ()
