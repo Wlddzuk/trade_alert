@@ -101,7 +101,7 @@
 | FLOW-03 | Phase 9 | Complete |
 | FLOW-04 | Phase 4 | Complete |
 | FLOW-05 | Phase 6 | Complete |
-| FLOW-06 | Phase 10 | Pending |
+| FLOW-06 | Phase 10 | Complete |
 | RISK-01 | Phase 4 | Complete |
 | RISK-02 | Phase 4 | Complete |
 | RISK-03 | Phase 4 | Complete |

@@ -183,7 +183,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: Add default dashboard runtime composition and config-backed auth
+- [x] 10-01: Add default dashboard runtime composition and config-backed auth
 - [ ] 10-02: Wire real monitoring and review sources into served dashboard proof
 
 ### Phase 11: Audit Traceability Closure
@@ -214,5 +214,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
 | 9. Telegram Alert Emission Closure | 2/2 | Complete | 2026-03-22 |
-| 10. Dashboard Runtime Composition Closure | 0/2 | Planned | |
+| 10. Dashboard Runtime Composition Closure | 1/2 | In Progress|  |
 | 11. Audit Traceability Closure | 0/0 | Not Started | |
