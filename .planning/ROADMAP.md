@@ -167,7 +167,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 09-01: Implement qualifying-alert emission over delivery and registry seams
+- [x] 09-01: Implement qualifying-alert emission over delivery and registry seams
 - [ ] 09-02: Replace partial callback proof with emission-driven approval and adjustment evidence
 
 ### Phase 10: Dashboard Runtime Composition Closure
@@ -209,6 +209,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 6. Telegram Runtime Delivery and Callback Wiring | 5/5 | Complete | 2026-03-18 |
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
-| 9. Telegram Alert Emission Closure | 0/2 | Not Started | |
+| 9. Telegram Alert Emission Closure | 1/2 | In Progress | |
 | 10. Dashboard Runtime Composition Closure | 0/0 | Not Started | |
 | 11. Audit Traceability Closure | 0/0 | Not Started | |
