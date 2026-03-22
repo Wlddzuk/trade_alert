@@ -4,8 +4,11 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.alerts.action_resolution import TelegramActionRegistry
+from app.alerts.alert_emission import TelegramAlertEmissionService
+from app.alerts.delivery_state import TelegramDeliveryState
 from app.alerts.adjustment_sessions import AdjustmentSessionStore
 from app.alerts.models import PreEntryAlertState, TradeProposal, project_pre_entry_alert
+from app.alerts.telegram_runtime import TelegramRuntimeDeliveryService
 from app.api.telegram_adjustments import TelegramAdjustmentCoordinator, TelegramAdjustmentStatus
 from app.providers.models import CatalystTag
 from app.scanner.models import CandidateRow
@@ -13,6 +16,7 @@ from app.scanner.strategy_models import SetupValidity
 from app.scanner.strategy_projection import StrategyProjection
 from app.scanner.strategy_tags import StrategyStageTag
 from app.scanner.trigger_logic import TriggerEvaluation
+from tests.operator_workflow.test_telegram_alert_emission_flow import FakeTelegramTransport, _qualifying_setup
 
 
 def _actionable_alert(*, observed_at: datetime | None = None):
@@ -70,11 +74,22 @@ def _actionable_alert(*, observed_at: datetime | None = None):
     )
 
 
-def test_adjustment_session_supports_one_sided_edit_then_confirmation() -> None:
+def _emit_registered_alert(*, symbol: str = "AKRX"):
     registry = TelegramActionRegistry()
+    service = TelegramAlertEmissionService(
+        delivery_state=TelegramDeliveryState(),
+        delivery_service=TelegramRuntimeDeliveryService(FakeTelegramTransport(["success"])),
+        registry=registry,
+        operator_chat_id="operator-chat",
+    )
+    outcome = service.emit(_qualifying_setup(symbol=symbol))
+    return registry, outcome
+
+
+def test_adjustment_session_supports_one_sided_edit_then_confirmation() -> None:
+    registry, outcome = _emit_registered_alert()
     coordinator = TelegramAdjustmentCoordinator(registry=registry)
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    alert = outcome.alert
 
     start = coordinator.start_entry_adjustment(actor_id="chat-1", alert=alert, observed_at=alert.surfaced_at)
     assert start.status is TelegramAdjustmentStatus.NEEDS_INPUT
@@ -108,10 +123,9 @@ def test_adjustment_session_supports_one_sided_edit_then_confirmation() -> None:
 
 
 def test_adjustment_session_can_cancel_before_completion() -> None:
-    registry = TelegramActionRegistry()
+    registry, outcome = _emit_registered_alert()
     coordinator = TelegramAdjustmentCoordinator(registry=registry)
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    alert = outcome.alert
     coordinator.start_entry_adjustment(actor_id="chat-1", alert=alert, observed_at=alert.surfaced_at)
 
     cancelled = coordinator.handle_message(
@@ -125,13 +139,12 @@ def test_adjustment_session_can_cancel_before_completion() -> None:
 
 
 def test_adjustment_session_expires_after_timeout() -> None:
-    registry = TelegramActionRegistry()
+    registry, outcome = _emit_registered_alert()
     coordinator = TelegramAdjustmentCoordinator(
         registry=registry,
         sessions=AdjustmentSessionStore(timeout=timedelta(seconds=30)),
     )
-    alert = _actionable_alert()
-    registry.register_alert(alert)
+    alert = outcome.alert
     coordinator.start_entry_adjustment(actor_id="chat-1", alert=alert, observed_at=alert.surfaced_at)
 
     expired = coordinator.handle_message(
