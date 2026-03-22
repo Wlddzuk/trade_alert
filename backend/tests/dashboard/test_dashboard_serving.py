@@ -3,16 +3,29 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from app.api import DashboardAuthSettings, DashboardRuntimeSnapshotProvider
-from app.api.dashboard_runtime import DashboardRuntimeSnapshot
+from app.api.dashboard_runtime import DashboardRuntimeSnapshot, reset_default_dashboard_runtime
+from app.alerts.approval_workflow import approve_with_defaults, close_trade, record_entry_decision, record_pre_entry_alert
+from app.alerts.models import PreEntryAlertState, TradeProposal, project_pre_entry_alert
+from app.ops.alert_delivery_health import AlertDeliveryAttempt, AlertDeliveryResult
 from app.audit.pnl_summary import PnlSummaryService
 from app.audit.review_service import TradeReviewService
+from app.ops.monitoring_models import ScannerLoopSnapshot
 from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
 from app.ops.incident_log import IncidentLogService
 from app.ops.overview_service import OperationsOverviewService
+from app.ops.system_events import SystemEvent, SystemEventType
 from app.main import create_app
+from app.paper.broker import PaperBroker
+from app.providers.models import CatalystTag
 from app.runtime.session_window import RuntimeWindow
+from app.scanner.models import CandidateRow
+from app.scanner.strategy_models import SetupValidity
+from app.scanner.strategy_projection import StrategyProjection
+from app.scanner.strategy_tags import StrategyStageTag
+from app.scanner.trigger_logic import TriggerEvaluation
 
 
 def test_dashboard_route_dispatch_preserves_telegram_webhook_behavior() -> None:
@@ -99,6 +112,7 @@ def test_dashboard_section_routes_render_read_only_review_flow() -> None:
 
 
 def test_default_app_serves_dashboard_after_config_backed_login(monkeypatch) -> None:
+    reset_default_dashboard_runtime()
     monkeypatch.setenv("DASHBOARD_PASSWORD", "swing")
     monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "phase-10-session")
     app = create_app()
@@ -118,6 +132,74 @@ def test_default_app_serves_dashboard_after_config_backed_login(monkeypatch) -> 
     assert dashboard_status == 200
     assert "Status Overview" in dashboard_body
     assert "Read-only dashboard" in dashboard_body
+
+
+def test_default_app_serves_shared_runtime_sections_after_config_backed_login(monkeypatch) -> None:
+    runtime = reset_default_dashboard_runtime()
+    observed_at = datetime(2026, 3, 18, 10, 30, tzinfo=UTC)
+    runtime_state = RuntimeWindow().status_at(observed_at)
+    runtime.replace_trust_snapshot(
+        SystemTrustSnapshot(
+            observed_at=observed_at,
+            trust_state=SystemTrustState.DEGRADED,
+            actionable=False,
+            runtime_state=runtime_state,
+            provider_statuses=(),
+            reasons=("polygon:market_data:stale_provider_update",),
+        )
+    )
+    runtime.set_scanner_loop(
+        ScannerLoopSnapshot(observed_at=observed_at, last_success_at=observed_at)
+    )
+    runtime.record_system_event(
+        SystemEvent(
+            event_type=SystemEventType.PROVIDER_TRUST_DEGRADED,
+            observed_at=observed_at,
+            trust_state=SystemTrustState.DEGRADED,
+            actionable=False,
+            reasons=("polygon:market_data:stale_provider_update",),
+        )
+    )
+    runtime.record_alert_delivery_attempts(
+        (
+            AlertDeliveryAttempt(
+                occurred_at=observed_at,
+                symbol="AKRX",
+                alert_id="akrx-alert",
+                result=AlertDeliveryResult.FAILURE,
+                reason="telegram_timeout",
+            ),
+        )
+    )
+    _record_closed_trade(runtime, trade_id="served-runtime-trade", surfaced_at=observed_at)
+
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "swing")
+    monkeypatch.setenv("DASHBOARD_SESSION_SECRET", "phase-10-session")
+    app = create_app()
+
+    login_status, login_headers, _ = _request(
+        "POST",
+        "/dashboard/login",
+        app=app,
+        form={"password": "swing"},
+    )
+    assert login_status == 303
+    cookie = login_headers["set-cookie"]
+
+    overview_status, _, overview_body = _request("GET", "/dashboard", app=app, cookie=cookie)
+    logs_status, _, logs_body = _request("GET", "/dashboard/logs", app=app, cookie=cookie)
+    trades_status, _, trades_body = _request("GET", "/dashboard/trades", app=app, cookie=cookie)
+    pnl_status, _, pnl_body = _request("GET", "/dashboard/pnl", app=app, cookie=cookie)
+
+    assert overview_status == 200
+    assert "degraded" in overview_body
+    assert logs_status == 200
+    assert "Alert delivery failure" in logs_body
+    assert "Provider trust degraded" in logs_body
+    assert trades_status == 200
+    assert "served-runtime-trade" in trades_body
+    assert pnl_status == 200
+    assert "Cumulative realized P&amp;L" in pnl_body
 
 
 def test_dashboard_stale_snapshot_route_uses_last_successful_snapshot() -> None:
@@ -234,4 +316,78 @@ def _runtime_snapshot() -> DashboardRuntimeSnapshot:
         review_feed=TradeReviewService().build_completed_trade_feed(()),
         pnl_summary=PnlSummaryService().build((), today=observed_at),
         last_updated_at=observed_at,
+    )
+
+
+def _record_closed_trade(runtime, *, trade_id: str, surfaced_at: datetime) -> None:
+    broker = PaperBroker()
+    alert = _actionable_alert(surfaced_at=surfaced_at)
+    record_pre_entry_alert(runtime.lifecycle_log, alert)
+    decision = approve_with_defaults(alert, decided_at=surfaced_at)
+    record_entry_decision(runtime.lifecycle_log, decision)
+    trade = broker.open_trade(
+        decision,
+        trade_id=trade_id,
+        quantity=100,
+        lifecycle_log=runtime.lifecycle_log,
+    )
+    broker.apply_open_trade_command(
+        trade,
+        close_trade(trade.open_snapshot, decided_at=trade.opened_at),
+        close_price="12.90",
+        lifecycle_log=runtime.lifecycle_log,
+    )
+
+
+def _actionable_alert(*, surfaced_at: datetime):
+    row = CandidateRow(
+        symbol="AKRX",
+        headline="AKRX reclaims VWAP after fresh news",
+        catalyst_tag=CatalystTag.BREAKING_NEWS,
+        latest_news_at=surfaced_at,
+        time_since_news_seconds=90.0,
+        observed_at=surfaced_at,
+        price=Decimal("12.45"),
+        volume=2_100_000,
+        average_daily_volume=Decimal("900000"),
+        daily_relative_volume=Decimal("4.4"),
+        short_term_relative_volume=Decimal("3.1"),
+        gap_percent=Decimal("12.0"),
+        change_from_prior_close_percent=Decimal("19.0"),
+        pullback_from_high_percent=Decimal("4.8"),
+        why_surfaced="breaking_news | move=19% | daily_rvol=4.4x",
+    )
+    projection = StrategyProjection(
+        row=row,
+        setup_validity=SetupValidity(
+            setup_valid=True,
+            evaluated_at=row.observed_at,
+            first_catalyst_at=row.latest_news_at,
+            catalyst_age_seconds=90.0,
+        ),
+        score=97,
+        stage_tag=StrategyStageTag.TRIGGER_READY,
+        supporting_reasons=("move=19%", "daily_rvol=4.4x", "trigger=15s"),
+        primary_invalid_reason=None,
+        trigger_evaluation=TriggerEvaluation(
+            triggered=True,
+            interval_seconds=15,
+            used_fallback=False,
+            trigger_price=Decimal("12.45"),
+            trigger_bar_started_at=row.observed_at,
+            bullish_confirmation=True,
+        ),
+        invalidation=None,
+    )
+    return project_pre_entry_alert(
+        projection,
+        TradeProposal(
+            symbol="AKRX",
+            entry_price="12.45",
+            stop_price="11.95",
+            target_price="13.60",
+        ),
+        state=PreEntryAlertState.ACTIONABLE,
+        rank=1,
+        surfaced_at=surfaced_at,
     )
