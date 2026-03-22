@@ -180,7 +180,11 @@ Plans:
   2. Dashboard auth configuration is present at the default runtime boundary instead of requiring ad hoc injected setup to avoid a `503`.
   3. Operators can reach served overview, logs, trades, and P&L routes against real composed runtime sources in milestone verification.
   4. Milestone audit can treat the served dashboard flow as fully integrated rather than route-only.
-**Plans**: 0 plans
+**Plans**: 2 plans
+
+Plans:
+- [ ] 10-01: Add default dashboard runtime composition and config-backed auth
+- [ ] 10-02: Wire real monitoring and review sources into served dashboard proof
 
 ### Phase 11: Audit Traceability Closure
 **Goal**: Close the remaining verification-chain and planning-traceability gaps by publishing the missing Phase 8 verification artifact and aligning roadmap and requirements state with shipped milestone work.
@@ -197,7 +201,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -210,5 +214,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
 | 9. Telegram Alert Emission Closure | 2/2 | Complete | 2026-03-22 |
-| 10. Dashboard Runtime Composition Closure | 0/0 | Not Started | |
+| 10. Dashboard Runtime Composition Closure | 0/2 | Planned | |
 | 11. Audit Traceability Closure | 0/0 | Not Started | |
