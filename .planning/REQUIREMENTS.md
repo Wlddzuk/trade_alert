@@ -33,8 +33,8 @@
 ### Alerts and Operator Workflow
 
 - [x] **FLOW-01**: Operator receives qualifying setup alerts in Telegram.
-- [ ] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
-- [ ] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
+- [x] **FLOW-02**: Operator can approve or reject a paper entry through the Telegram-led workflow.
+- [x] **FLOW-03**: Operator can confirm or adjust stop and target when approving an entry.
 - [x] **FLOW-04**: Operator can allow exits to follow pre-approved rules after entry.
 - [x] **FLOW-05**: Operator can override exit behavior at any time.
 - [x] **FLOW-06**: Operator can review system status, logs, and completed paper trades in a secondary read-only dashboard.
@@ -97,8 +97,8 @@
 | SIG-04 | Phase 3 | Complete |
 | SIG-05 | Phase 4 | Complete |
 | FLOW-01 | Phase 9 | Complete |
-| FLOW-02 | Phase 9 | Pending |
-| FLOW-03 | Phase 9 | Pending |
+| FLOW-02 | Phase 9 | Complete |
+| FLOW-03 | Phase 9 | Complete |
 | FLOW-04 | Phase 4 | Complete |
 | FLOW-05 | Phase 6 | Complete |
 | FLOW-06 | Phase 10 | Pending |
@@ -122,4 +122,4 @@
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-22 after 09-01 execution*
+*Last updated: 2026-03-22 after 09-02 execution*

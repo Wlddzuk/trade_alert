@@ -18,7 +18,7 @@ The roadmap moves from trustworthy data and scanning foundations into strategy-s
 - [x] **Phase 6: Telegram Runtime Delivery and Callback Wiring** - Wire alert delivery and operator decisions into a live Telegram transport boundary for milestone-complete workflow coverage. (completed 2026-03-18)
 - [x] **Phase 7: Served Dashboard Runtime Surface** - Expose the read-only dashboard through a served application boundary so operators can access it at runtime. (completed 2026-03-18)
 - [x] **Phase 8: Monitoring Verification Recovery** - Re-establish Phase 5 verification evidence so the milestone audit can mark monitoring and review requirements complete. (completed 2026-03-19)
-- [ ] **Phase 9: Telegram Alert Emission Closure** - Close the remaining milestone Telegram gap by wiring qualifying setup emission into outbound delivery and callback registration.
+- [x] **Phase 9: Telegram Alert Emission Closure** - Close the remaining milestone Telegram gap by wiring qualifying setup emission into outbound delivery and callback registration. (completed 2026-03-22)
 - [ ] **Phase 10: Dashboard Runtime Composition Closure** - Close the remaining served-dashboard integration gap by wiring a milestone-ready default runtime composition.
 - [ ] **Phase 11: Audit Traceability Closure** - Close the remaining verification-chain and planning-traceability gaps before milestone archival.
 
@@ -168,7 +168,7 @@ Plans:
 
 Plans:
 - [x] 09-01: Implement qualifying-alert emission over delivery and registry seams
-- [ ] 09-02: Replace partial callback proof with emission-driven approval and adjustment evidence
+- [x] 09-02: Replace partial callback proof with emission-driven approval and adjustment evidence
 
 ### Phase 10: Dashboard Runtime Composition Closure
 **Goal**: Close the remaining dashboard integration gap by making the default served app compose usable auth and real monitoring/review snapshot providers for operator-facing runtime review.
@@ -209,6 +209,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 6. Telegram Runtime Delivery and Callback Wiring | 5/5 | Complete | 2026-03-18 |
 | 7. Served Dashboard Runtime Surface | 2/2 | Complete | 2026-03-18 |
 | 8. Monitoring Verification Recovery | 2/2 | Complete | 2026-03-19 |
-| 9. Telegram Alert Emission Closure | 1/2 | In Progress | |
+| 9. Telegram Alert Emission Closure | 2/2 | Complete | 2026-03-22 |
 | 10. Dashboard Runtime Composition Closure | 0/0 | Not Started | |
 | 11. Audit Traceability Closure | 0/0 | Not Started | |
