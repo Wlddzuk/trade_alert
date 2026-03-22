@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.api.dashboard_runtime import DashboardRuntimeSnapshot, DashboardRuntimeSnapshotProvider
+from app.api.dashboard_runtime import (
+    DashboardRuntimeComposition,
+    DashboardRuntimeSnapshot,
+    DashboardRuntimeSnapshotProvider,
+    create_default_dashboard_runtime,
+)
 from app.audit.pnl_summary import PnlSummaryService
 from app.audit.review_service import TradeReviewService
 from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
@@ -53,6 +58,20 @@ def test_snapshot_provider_raises_when_no_successful_snapshot_exists() -> None:
 
     with pytest.raises(RuntimeError, match="no snapshot"):
         provider.build_snapshot()
+
+
+def test_default_dashboard_runtime_composition_owns_snapshot_dependencies() -> None:
+    runtime = create_default_dashboard_runtime()
+
+    assert isinstance(runtime, DashboardRuntimeComposition)
+    assert runtime.lifecycle_log.all_events() == ()
+
+    snapshot = runtime.build_snapshot()
+
+    assert snapshot.review_feed.total_trades == 0
+    assert snapshot.pnl_summary.cumulative_trade_count == 0
+    assert snapshot.incident_report.recent_critical_issues == ()
+    assert snapshot.refresh_interval_seconds == 30
 
 
 def _runtime_snapshot() -> DashboardRuntimeSnapshot:

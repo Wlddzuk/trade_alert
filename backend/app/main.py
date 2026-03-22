@@ -17,6 +17,7 @@ from app.api import (
     TelegramCallbackHandler,
     TelegramRoutes,
 )
+from app.api.dashboard_runtime import create_default_dashboard_runtime
 from app.audit.lifecycle_log import LifecycleLog
 from app.paper.broker import PaperBroker
 from app.scanner.feed_service import CandidateFeedService
@@ -84,10 +85,11 @@ def create_app(
     dashboard_auth_settings: DashboardAuthSettings | None = None,
     telegram: TelegramRoutes | None = None,
 ) -> BuySignalApp:
+    default_dashboard_runtime = create_default_dashboard_runtime()
     return BuySignalApp(
         dashboard=dashboard
         or DashboardRoutes(
-            snapshot_provider=dashboard_snapshot_provider,
+            snapshot_provider=dashboard_snapshot_provider or default_dashboard_runtime.snapshot_provider(),
             auth_settings=dashboard_auth_settings,
         ),
         telegram=telegram,
