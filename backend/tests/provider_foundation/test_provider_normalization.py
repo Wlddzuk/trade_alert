@@ -77,7 +77,7 @@ def test_benzinga_provider_normalizes_payloads_through_news_ingestor(
     assert observed_requests[0][0].endswith("/api/v2/news")
     assert observed_requests[0][1]["tickers"] == "ACME"
     assert observed_requests[0][1]["pageSize"] == 25
-    assert observed_requests[0][1]["updatedSince"] == updated_since.isoformat()
+    assert observed_requests[0][1]["updatedSince"] == int(updated_since.timestamp())
     assert batch.provider == "benzinga"
     assert batch.capability is ProviderCapability.NEWS
     assert len(batch.records) == 1

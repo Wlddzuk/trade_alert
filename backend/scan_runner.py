@@ -21,11 +21,13 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 import aiohttp
+import yfinance as yf
 
 from app.config import AppConfig
 from app.providers.benzinga_adapter import BenzingaNewsProvider
 from app.providers.models import (
     DailyBar,
+    IntradayBar,
     MarketSnapshot,
     ProviderCapability,
     ProviderHealthSnapshot,
@@ -33,9 +35,15 @@ from app.providers.models import (
     ProviderBatch,
 )
 from app.providers.polygon_adapter import PolygonSnapshotProvider
+from app.scanner.context_features import build_context_features
+from app.scanner.invalidation import evaluate_invalidation
 from app.scanner.metrics import build_market_metrics
 from app.scanner.news_linking import latest_news_by_symbol
 from app.scanner.row_builder import build_candidate_row
+from app.scanner.setup_validity import evaluate_setup_validity
+from app.scanner.strategy_projection import StrategyProjection, project_strategy_row
+from app.scanner.trigger_logic import evaluate_first_break_trigger
+from app.scanner.trigger_policy import resolve_trigger_bars
 
 # ── tunables ──────────────────────────────────────────────────────────────────
 NEWS_LIMIT        = 100
@@ -197,8 +205,67 @@ async def fetch_polygon_daily_bars(
         print(f"  [WARN] Polygon daily bars failed: {exc} — RVOL will show n/a")
         return ()
 
+# ── yfinance: intraday 1m bars ───────────────────────────────────────────────
 
-# ── Output formatting ─────────────────────────────────────────────────────────
+def fetch_intraday_bars_yf(symbols: list[str]) -> dict[str, tuple[IntradayBar, ...]]:
+    """
+    Fetch 1-minute intraday bars for each symbol using yfinance (free, no key).
+    Returns dict of symbol → tuple of IntradayBar.
+    Today + last session (period=2d) so we always have bars even post-close.
+    """
+    if not symbols:
+        return {}
+    try:
+        tickers = " ".join(symbols)
+        raw = yf.download(tickers, period="2d", interval="1m", progress=False, group_by="ticker")
+    except Exception as exc:
+        print(f"  [WARN] yfinance download failed: {exc}")
+        return {}
+
+    result: dict[str, tuple[IntradayBar, ...]] = {}
+    for sym in symbols:
+        try:
+            # yfinance returns MultiIndex when multiple tickers
+            if len(symbols) == 1:
+                df = raw
+            else:
+                df = raw[sym] if sym in raw.columns.get_level_values(0) else None
+            if df is None or df.empty:
+                continue
+            # Flatten MultiIndex columns if needed
+            if hasattr(df.columns, "levels"):
+                df.columns = df.columns.get_level_values(-1)
+            bars = []
+            for ts, row in df.iterrows():
+                try:
+                    bar = IntradayBar(
+                        symbol=sym,
+                        provider="yfinance",
+                        start_at=ts.to_pydatetime().astimezone(UTC),
+                        open_price=str(row["Open"]) if row["Open"] and not __import__("math").isnan(float(row["Open"])) else "0",
+                        high_price=str(row["High"]) if row["High"] and not __import__("math").isnan(float(row["High"])) else "0",
+                        low_price=str(row["Low"]) if row["Low"] and not __import__("math").isnan(float(row["Low"])) else "0",
+                        close_price=str(row["Close"]) if row["Close"] and not __import__("math").isnan(float(row["Close"])) else "0",
+                        volume=int(row["Volume"]) if row["Volume"] and not __import__("math").isnan(float(row["Volume"])) else 0,
+                        interval_minutes=1,
+                    )
+                    bars.append(bar)
+                except Exception:
+                    continue
+            if bars:
+                result[sym] = tuple(bars)
+        except Exception:
+            continue
+    return result
+
+
+
+_STAGE_ICON = {
+    "building":      "🔨",
+    "trigger_ready": "⚡",
+    "invalidated":   "❌",
+}
+
 
 def _fmt(value, suffix="", d=2):
     if value is None:
@@ -206,16 +273,22 @@ def _fmt(value, suffix="", d=2):
     return f"{float(value):.{d}f}{suffix}"
 
 
-def print_row(rank: int, row) -> None:
+def print_projection(rank: int, proj: StrategyProjection) -> None:
+    row     = proj.row
+    icon    = _STAGE_ICON.get(proj.stage_tag.value, "?")
+    reason  = f" reason={proj.primary_invalid_reason}" if proj.primary_invalid_reason else ""
+    support = "  " + " | ".join(proj.supporting_reasons) if proj.supporting_reasons else ""
     print(
         f"  #{rank:<2}  {row.symbol:<6}  "
         f"${_fmt(row.price)}  "
         f"chg={_fmt(row.change_from_prior_close_percent, '%')}  "
-        f"daily_rvol={_fmt(row.daily_relative_volume, 'x')}  "
+        f"rvol={_fmt(row.daily_relative_volume, 'x')}  "
         f"pullback={_fmt(row.pullback_from_high_percent, '%')}  "
-        f"news_age={int(row.time_since_news_seconds // 60)}m  "
-        f"[{row.catalyst_tag.value}]  {row.headline[:65]}"
+        f"age={int(row.time_since_news_seconds // 60)}m  "
+        f"score={proj.score:>3}  {icon} {proj.stage_tag.value}{reason}"
     )
+    if support:
+        print(f"         └─ {row.headline[:70]}{support}")
 
 
 # ── Scan cycle ────────────────────────────────────────────────────────────────
@@ -254,21 +327,30 @@ async def run_once(
     more = f" … +{len(active_symbols)-12} more" if len(active_symbols) > 12 else ""
     print(f"  [2/4] Symbols with news ({len(active_symbols)}): {disp}{more}")
 
-    # 3. Fetch Finnhub live quotes + Polygon daily bars concurrently
-    print(f"  [3/4] Fetching Finnhub quotes + Polygon daily bars …", end=" ", flush=True)
+    # 3. Fetch Finnhub quotes + Polygon daily bars + yfinance intraday (concurrently)
+    print(f"  [3/4] Fetching quotes, daily bars + intraday …", end=" ", flush=True)
     quotes_task = fetch_finnhub_quotes(session, active_symbols, finnhub_key, now)
     bars_task   = fetch_polygon_daily_bars(polygon, active_symbols, LOOKBACK_DAYS)
     snapshots, daily_bars = await asyncio.gather(quotes_task, bars_task)
-    print(f"{len(snapshots)} quotes, {len(daily_bars)} bars")
 
-    # 4. Compute metrics and build candidate rows
-    print("  [4/4] Computing metrics …")
-    rows = []
+    # yfinance is synchronous — run in executor so it doesn't block the event loop
+    loop = asyncio.get_event_loop()
+    intraday_by_sym = await loop.run_in_executor(
+        None, fetch_intraday_bars_yf, active_symbols
+    )
+    total_intraday = sum(len(v) for v in intraday_by_sym.values())
+    print(f"{len(snapshots)} quotes, {len(daily_bars)} daily bars, {total_intraday} intraday bars")
+
+    # 4. Build candidate rows → run full scanner signal chain
+    print("  [4/4] Running scanner signal chain …")
+    projections: list[StrategyProjection] = []
     for symbol in active_symbols:
         linked_news = news_by_symbol.get(symbol)
         snapshot    = snapshots.get(symbol)
         if linked_news is None or snapshot is None:
             continue
+
+        # metrics → CandidateRow
         metrics = build_market_metrics(
             snapshot,
             daily_bars=daily_bars,
@@ -279,32 +361,62 @@ async def run_once(
         row = build_candidate_row(snapshot, linked_news, metrics)
         if row is None:
             continue
-        rows.append(row)
 
-    # Sort by change desc
-    rows.sort(key=lambda r: float(r.change_from_prior_close_percent or 0), reverse=True)
+        # context → validity → trigger → invalidation → projection
+        intraday_bars = intraday_by_sym.get(symbol, ())
+        context  = build_context_features(snapshot, intraday_bars=intraday_bars)
+        validity = evaluate_setup_validity(row, linked_news, context)
 
-    # Split: movers vs all
-    movers = [r for r in rows if r.change_from_prior_close_percent is not None
-              and float(r.change_from_prior_close_percent) >= MIN_CHANGE_PCT]
+        # Trigger: preferred=15s (not available from yfinance), fallback=60s (1m bars)
+        trigger_selection = resolve_trigger_bars(
+            preferred_bars=(),          # no 15s bars yet
+            fallback_bars=intraday_bars,
+        )
+        trigger = evaluate_first_break_trigger(trigger_selection)
 
-    if not movers:
-        print(f"\n  No candidates >= {MIN_CHANGE_PCT}% move filter.")
-        if rows:
-            print(f"  All {len(rows)} symbols with news data (sorted by chg%):")
-            print(f"  {'─'*76}")
-            for i, r in enumerate(rows[:15], 1):
-                print_row(i, r)
-            print(f"  {'─'*76}")
+        # Invalidation gate (runs after validity check)
+        invalidation = evaluate_invalidation(
+            row, linked_news, context,
+            setup_validity=validity,
+        )
+
+        proj = project_strategy_row(
+            row,
+            context_features=context,
+            setup_validity=validity,
+            trigger_evaluation=trigger,
+            invalidation=invalidation,
+        )
+        projections.append(proj)
+
+    if not projections:
+        print("  No candidate rows built.")
         return
 
+    # Sort: valid first, then score descending
+    projections.sort(key=lambda p: (not p.is_valid, -p.score))
+
+    valid   = [p for p in projections if p.is_valid]
+    invalid = [p for p in projections if not p.is_valid]
+
     print(f"\n  {'─'*76}")
-    print(f"  {'#':<4}  {'SYM':<6}  {'PRICE':>8}  {'CHG%':>7}  {'RVOL':>8}  {'PULL%':>7}  {'AGE':>6}  TYPE  HEADLINE")
+    print(f"  {len(valid)} valid setup(s)  |  {len(invalid)} invalid  |  {len(projections)} total")
     print(f"  {'─'*76}")
-    for i, row in enumerate(movers, 1):
-        print_row(i, row)
+
+    if valid:
+        print(f"  ✅ VALID SETUPS (scored, ranked):")
+        for i, proj in enumerate(valid, 1):
+            print_projection(i, proj)
+        print()
+
+    # Always show top invalid setups so you can see what's blocking them
+    show_invalid = invalid[:10]
+    if show_invalid:
+        print(f"  ⚠️  TOP INVALID ({len(invalid)} total — top {len(show_invalid)} shown):")
+        for i, proj in enumerate(show_invalid, 1):
+            print_projection(i, proj)
+
     print(f"  {'─'*76}")
-    print(f"  {len(movers)} candidate(s) surfaced  |  {len(rows)} total with data")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

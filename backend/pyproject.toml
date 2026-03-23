@@ -3,7 +3,11 @@ name = "buy-signal-backend"
 version = "0.1.0"
 description = "Provider foundation for the Buy Signal backend."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "aiohttp>=3.13.3",
+    "uvicorn>=0.42.0",
+    "yfinance>=1.2.0",
+]
 
 [dependency-groups]
 dev = [
