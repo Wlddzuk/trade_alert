@@ -279,8 +279,8 @@ async def _scanner_loop(
             now = datetime.now(UTC)
             scan_start = now
             try:
-                # 1. Benzinga news
-                news_batch  = await benzinga.fetch_recent_news(_SCAN_SEED, limit=100)
+                # 1. Benzinga news — no ticker filter, discover all movers
+                news_batch  = await benzinga.fetch_recent_news(limit=100)
                 news_map    = latest_news_by_symbol(news_batch.records)
                 active_syms = list(news_map.keys())[:40]
 

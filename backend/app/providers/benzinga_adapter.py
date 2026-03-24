@@ -105,23 +105,22 @@ class BenzingaNewsProvider(NewsProvider):
 
     async def fetch_recent_news(
         self,
-        symbols: Sequence[str],
+        symbols: Sequence[str] = (),
         *,
         updated_since: datetime | None = None,
         limit: int = 100,
     ) -> ProviderBatch[NewsEvent]:
-        normalized_symbols = normalize_symbols(symbols)
-        if not normalized_symbols:
-            raise ValueError("at least one symbol is required")
         if not self._config.api_key:
             raise ProviderConfigurationError("benzinga", "BENZINGA_API_KEY is not configured")
 
         params: dict[str, Any] = {
             "token": self._config.api_key,
-            "tickers": ",".join(normalized_symbols),
             "pageSize": limit,
             "displayOutput": "json",
         }
+        normalized_symbols = normalize_symbols(symbols)
+        if normalized_symbols:
+            params["tickers"] = ",".join(normalized_symbols)
         if updated_since is not None:
             params["updatedSince"] = int(updated_since.timestamp())
 

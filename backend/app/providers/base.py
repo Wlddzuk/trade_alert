@@ -68,7 +68,7 @@ class NewsProvider(ABC):
     @abstractmethod
     async def fetch_recent_news(
         self,
-        symbols: Sequence[str],
+        symbols: Sequence[str] = (),
         *,
         updated_since: datetime | None = None,
         limit: int = 100,

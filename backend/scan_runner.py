@@ -50,9 +50,15 @@ NEWS_LIMIT        = 100
 LOOKBACK_DAYS     = 20
 POLL_INTERVAL_SEC = 60
 MIN_CHANGE_PCT    = 2.0   # min % change from prior close to surface
-MAX_SYMBOLS       = 40    # cap to stay well within Finnhub 60 req/min free limit
+MAX_SYMBOLS       = 50    # raised from 40 — 3-layer discovery needs headroom
+PEER_BUDGET       = 10    # max Finnhub /peers calls per cycle (rate-limit safe)
+PEER_CACHE_TTL    = 86400 # 24 hours — peers rarely change
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Seed symbols are used as a priority boost, NOT a filter.
+# The scanner fetches ALL recent Benzinga news, then prioritizes
+# seed symbols when capping to MAX_SYMBOLS.  Unknown tickers
+# discovered via news still get scanned.
 SEED_SYMBOLS = [
     "AAPL","TSLA","NVDA","AMD","META","AMZN","MSFT","GOOGL","NFLX",
     "COIN","SOUN","MARA","RIOT","PLTR","SOFI","NIO","RIVN","SMCI",
@@ -259,6 +265,87 @@ def fetch_intraday_bars_yf(symbols: list[str]) -> dict[str, tuple[IntradayBar, .
     return result
 
 
+# ── Layer 2: Finnhub sector peer expansion (cached) ─────────────────────────
+
+_peer_cache: dict[str, tuple[list[str], float]] = {}   # symbol → (peers, epoch)
+
+
+async def finnhub_peers(
+    session: aiohttp.ClientSession,
+    symbol: str,
+    api_key: str,
+) -> list[str]:
+    """Fetch peers for one symbol from Finnhub /stock/peers. Cached 24h."""
+    now_ts = time.time()
+    if symbol in _peer_cache:
+        peers, cached_at = _peer_cache[symbol]
+        if now_ts - cached_at < PEER_CACHE_TTL:
+            return peers
+    if not api_key:
+        return []
+    try:
+        async with session.get(
+            f"{FINNHUB_BASE}/stock/peers",
+            params={"symbol": symbol, "token": api_key},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json()
+            peers = [p for p in data if isinstance(p, str) and p != symbol]
+            _peer_cache[symbol] = (peers, now_ts)
+            return peers
+    except Exception:
+        return []
+
+
+async def expand_with_peers(
+    session: aiohttp.ClientSession,
+    news_symbols: list[str],
+    api_key: str,
+) -> list[str]:
+    """
+    Layer 2: for each news-mentioned symbol, discover sector peers.
+    Only fetches uncached symbols, up to PEER_BUDGET per cycle.
+    Returns NEW symbols not already in news_symbols.
+    """
+    uncached = [s for s in news_symbols if s not in _peer_cache][:PEER_BUDGET]
+    if uncached:
+        await asyncio.gather(*[finnhub_peers(session, s, api_key) for s in uncached])
+
+    all_peers: set[str] = set()
+    news_set = set(news_symbols)
+    for sym in news_symbols:
+        if sym in _peer_cache:
+            peers, _ = _peer_cache[sym]
+            all_peers.update(peers[:5])  # top 5 peers per symbol
+
+    return sorted(all_peers - news_set)
+
+
+# ── Layer 3: top market movers via yfinance screener ─────────────────────────
+
+def fetch_top_movers_yf(min_change_pct: float = 3.0, max_results: int = 25) -> list[str]:
+    """
+    Layer 3: discover unknown small-cap movers spiking on volume.
+    Uses yfinance custom screener: NASDAQ/NYSE, <2B mcap, >3% change, >50k vol.
+    Returns list of symbols sorted by % change descending.
+    """
+    try:
+        from yfinance import EquityQuery
+        q = EquityQuery("and", [
+            EquityQuery("gt", ["percentchange", min_change_pct]),
+            EquityQuery("eq", ["region", "us"]),
+            EquityQuery("lt", ["intradaymarketcap", 2_000_000_000]),
+            EquityQuery("gte", ["intradayprice", 1]),
+            EquityQuery("gt", ["dayvolume", 50_000]),
+            EquityQuery("is-in", ["exchange", "NMS", "NYQ"]),
+        ])
+        result = yf.screen(q, sortField="percentchange", sortAsc=False, size=max_results)
+        return [r["symbol"] for r in result.get("quotes", []) if "symbol" in r]
+    except Exception:
+        return []
+
 
 _STAGE_ICON = {
     "building":      "🔨",
@@ -276,8 +363,19 @@ def _fmt(value, suffix="", d=2):
 def print_projection(rank: int, proj: StrategyProjection) -> None:
     row     = proj.row
     icon    = _STAGE_ICON.get(proj.stage_tag.value, "?")
-    reason  = f" reason={proj.primary_invalid_reason}" if proj.primary_invalid_reason else ""
-    support = "  " + " | ".join(proj.supporting_reasons) if proj.supporting_reasons else ""
+
+    # Prefer the granular validity reason over the masked 'setup_invalid' from invalidation
+    real_reason = proj.primary_invalid_reason
+    if (
+        real_reason == "setup_invalid"
+        and proj.setup_validity.primary_invalid_reason is not None
+    ):
+        real_reason = proj.setup_validity.primary_invalid_reason.value
+
+    reason  = f" reason={real_reason}" if real_reason else ""
+    support = "  " + " | ".join(
+        r for r in proj.supporting_reasons if r != f"invalid={proj.primary_invalid_reason}"
+    ) if proj.supporting_reasons else ""
     print(
         f"  #{rank:<2}  {row.symbol:<6}  "
         f"${_fmt(row.price)}  "
@@ -289,6 +387,8 @@ def print_projection(rank: int, proj: StrategyProjection) -> None:
     )
     if support:
         print(f"         └─ {row.headline[:70]}{support}")
+    else:
+        print(f"         └─ {row.headline[:80]}")
 
 
 # ── Scan cycle ────────────────────────────────────────────────────────────────
@@ -304,9 +404,9 @@ async def run_once(
     print(f"  Scan at {now.strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print(f"{'━'*80}")
 
-    # 1. Fetch Benzinga news
-    print("  [1/4] Fetching Benzinga news …", end=" ", flush=True)
-    news_batch = await benzinga.fetch_recent_news(SEED_SYMBOLS, limit=NEWS_LIMIT)
+    # ── LAYER 1: Benzinga news firehose (no ticker filter) ───────────────
+    print("  [1/6] Benzinga news (all tickers) …", end=" ", flush=True)
+    news_batch = await benzinga.fetch_recent_news(limit=NEWS_LIMIT)
     news_events = news_batch.records
     print(f"{len(news_events)} events")
 
@@ -314,40 +414,85 @@ async def run_once(
         print("  No news — nothing to scan.")
         return
 
-    # 2. Link news to symbols, cap universe
     news_by_symbol = latest_news_by_symbol(news_events)
-    # Prefer symbols in our seed list (US equities); put seed symbols first
+    news_symbols = list(news_by_symbol.keys())
+    print(f"         → {len(news_symbols)} tickers mentioned in news")
+
+    # ── LAYER 2: Sector peer expansion via Finnhub ───────────────────────
+    print(f"  [2/6] Peer expansion ({len(_peer_cache)} cached) …", end=" ", flush=True)
+    peer_symbols = await expand_with_peers(session, news_symbols, finnhub_key)
+    print(f"+{len(peer_symbols)} peers")
+
+    # ── LAYER 3: Top small-cap movers via yfinance screener ──────────────
+    print("  [3/6] Small-cap movers screener …", end=" ", flush=True)
+    loop = asyncio.get_event_loop()
+    mover_symbols = await loop.run_in_executor(None, fetch_top_movers_yf)
+    # Filter out any already in news or peers
+    existing = set(news_symbols) | set(peer_symbols)
+    new_movers = [s for s in mover_symbols if s not in existing]
+    print(f"{len(mover_symbols)} movers, {len(new_movers)} new")
+
+    # ── Merge & prioritize universe ──────────────────────────────────────
+    # Priority: news tickers first (seed boost), then peers, then movers
     seed_set = set(s.upper() for s in SEED_SYMBOLS)
-    ordered = sorted(
-        news_by_symbol.keys(),
-        key=lambda s: (0 if s in seed_set else 1, s),
-    )
-    active_symbols = ordered[:MAX_SYMBOLS]
+    all_candidates = []
+    sources: dict[str, str] = {}  # symbol → discovery source
+
+    for s in news_symbols:
+        all_candidates.append(s)
+        sources[s] = "news"
+    for s in peer_symbols:
+        if s not in sources:
+            all_candidates.append(s)
+            sources[s] = "peer"
+    for s in new_movers:
+        if s not in sources:
+            all_candidates.append(s)
+            sources[s] = "mover"
+
+    # Reserve slots so peers/movers don't get crowded out by news
+    # Allocation: up to 35 news, up to 10 peers, up to 10 movers (= 55 max, capped to 50)
+    news_list   = [s for s in all_candidates if sources[s] == "news"]
+    peer_list   = [s for s in all_candidates if sources[s] == "peer"]
+    mover_list  = [s for s in all_candidates if sources[s] == "mover"]
+    active_symbols = news_list[:35] + peer_list[:10] + mover_list[:10]
+    active_symbols = active_symbols[:MAX_SYMBOLS]
+
+    n_news   = sum(1 for s in active_symbols if sources[s] == "news")
+    n_peers  = sum(1 for s in active_symbols if sources[s] == "peer")
+    n_movers = sum(1 for s in active_symbols if sources[s] == "mover")
     disp = ", ".join(active_symbols[:12])
     more = f" … +{len(active_symbols)-12} more" if len(active_symbols) > 12 else ""
-    print(f"  [2/4] Symbols with news ({len(active_symbols)}): {disp}{more}")
+    print(f"  [4/6] Universe: {len(active_symbols)} symbols "
+          f"({n_news} news, {n_peers} peers, {n_movers} movers): {disp}{more}")
 
-    # 3. Fetch Finnhub quotes + Polygon daily bars + yfinance intraday (concurrently)
-    print(f"  [3/4] Fetching quotes, daily bars + intraday …", end=" ", flush=True)
+    # ── Fetch market data for full universe ──────────────────────────────
+    print(f"  [5/6] Fetching quotes, daily bars + intraday …", end=" ", flush=True)
     quotes_task = fetch_finnhub_quotes(session, active_symbols, finnhub_key, now)
     bars_task   = fetch_polygon_daily_bars(polygon, active_symbols, LOOKBACK_DAYS)
     snapshots, daily_bars = await asyncio.gather(quotes_task, bars_task)
 
-    # yfinance is synchronous — run in executor so it doesn't block the event loop
-    loop = asyncio.get_event_loop()
+    # yfinance is synchronous — run in executor
     intraday_by_sym = await loop.run_in_executor(
         None, fetch_intraday_bars_yf, active_symbols
     )
     total_intraday = sum(len(v) for v in intraday_by_sym.values())
     print(f"{len(snapshots)} quotes, {len(daily_bars)} daily bars, {total_intraday} intraday bars")
 
-    # 4. Build candidate rows → run full scanner signal chain
-    print("  [4/4] Running scanner signal chain …")
+    # ── Run scanner signal chain ─────────────────────────────────────────
+    print("  [6/6] Running scanner signal chain …")
     projections: list[StrategyProjection] = []
+    newsless_movers: list[tuple[str, str, MarketSnapshot]] = []  # (sym, source, snap)
+
     for symbol in active_symbols:
+        snapshot = snapshots.get(symbol)
+        if snapshot is None:
+            continue
+
         linked_news = news_by_symbol.get(symbol)
-        snapshot    = snapshots.get(symbol)
-        if linked_news is None or snapshot is None:
+        if linked_news is None:
+            # Peer or mover with no news — track for display but skip signal chain
+            newsless_movers.append((symbol, sources.get(symbol, "?"), snapshot))
             continue
 
         # metrics → CandidateRow
@@ -389,7 +534,7 @@ async def run_once(
         )
         projections.append(proj)
 
-    if not projections:
+    if not projections and not newsless_movers:
         print("  No candidate rows built.")
         return
 
@@ -400,7 +545,8 @@ async def run_once(
     invalid = [p for p in projections if not p.is_valid]
 
     print(f"\n  {'─'*76}")
-    print(f"  {len(valid)} valid setup(s)  |  {len(invalid)} invalid  |  {len(projections)} total")
+    print(f"  {len(valid)} valid setup(s)  |  {len(invalid)} invalid  |  "
+          f"{len(projections)} scored  |  {len(newsless_movers)} watchlist")
     print(f"  {'─'*76}")
 
     if valid:
@@ -415,6 +561,21 @@ async def run_once(
         print(f"  ⚠️  TOP INVALID ({len(invalid)} total — top {len(show_invalid)} shown):")
         for i, proj in enumerate(show_invalid, 1):
             print_projection(i, proj)
+
+    # Show discovered peers/movers without news
+    if newsless_movers:
+        print(f"\n  👀 WATCHLIST — no news yet ({len(newsless_movers)} symbols via peer/mover discovery):")
+        for sym, src, snap in newsless_movers[:15]:
+            price = snap.last_price
+            chg = ""
+            if snap.previous_close:
+                try:
+                    pct = (float(price) - float(snap.previous_close)) / float(snap.previous_close) * 100
+                    chg = f"  chg={pct:+.1f}%"
+                except (ValueError, ZeroDivisionError):
+                    pass
+            tag = "🔗" if src == "peer" else "📈"
+            print(f"    {tag} {sym:<6}  ${price}{chg}  [{src}]")
 
     print(f"  {'─'*76}")
 
@@ -433,13 +594,14 @@ async def main() -> None:
         sys.exit(1)
 
     print("=" * 80)
-    print("  Buy Signal — Live Scanner")
+    print("  Buy Signal — Live Scanner (3-layer discovery)")
     print("=" * 80)
+    print(f"  Layer 1  : Benzinga news firehose (all tickers)")
+    print(f"  Layer 2  : Finnhub sector peer expansion (cached 24h)")
+    print(f"  Layer 3  : yfinance small-cap movers screener")
     print(f"  Quotes   : Finnhub (real-time)")
     print(f"  History  : Polygon (daily bars, RVOL)")
-    print(f"  News     : Benzinga")
-    print(f"  Poll     : every {POLL_INTERVAL_SEC}s  |  Min move: >= {MIN_CHANGE_PCT}%")
-    print(f"  Universe : {len(SEED_SYMBOLS)} seed symbols, cap {MAX_SYMBOLS}/scan")
+    print(f"  Poll     : every {POLL_INTERVAL_SEC}s  |  Cap: {MAX_SYMBOLS}/scan")
     print()
 
     async with aiohttp.ClientSession() as session:
