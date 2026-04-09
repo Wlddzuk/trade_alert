@@ -103,8 +103,8 @@ def test_strategy_defaults_expose_phase_three_defaults() -> None:
 
     assert defaults.max_catalyst_age_minutes == 90
     assert defaults.min_move_on_day_percent == Decimal("5")
-    assert defaults.min_daily_relative_volume == Decimal("2.0")
-    assert defaults.min_short_term_relative_volume == Decimal("1.5")
+    assert defaults.min_daily_relative_volume == Decimal("1.2")
+    assert defaults.min_short_term_relative_volume == Decimal("1.0")
     assert defaults.min_pullback_retracement_percent == Decimal("35")
     assert defaults.max_pullback_retracement_percent == Decimal("60")
     assert defaults.preferred_trigger_interval_seconds == 15
@@ -227,7 +227,7 @@ def test_evaluate_setup_validity_rejects_weak_relative_volume() -> None:
         first_published_at=datetime(2026, 3, 14, 13, 0, tzinfo=UTC),
         latest_published_at=datetime(2026, 3, 14, 13, 25, tzinfo=UTC),
     )
-    row = _candidate_row(observed_at=observed_at, daily_rvol="1.2")
+    row = _candidate_row(observed_at=observed_at, daily_rvol="0.8")
     features = ContextFeatures(
         observed_at=observed_at,
         vwap=Decimal("22.00"),

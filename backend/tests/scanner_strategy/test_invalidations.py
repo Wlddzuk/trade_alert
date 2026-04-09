@@ -132,7 +132,7 @@ def test_evaluate_invalidation_detects_halt_and_dead_move_conditions() -> None:
 
 def test_evaluate_invalidation_detects_weak_relative_volume_before_trigger() -> None:
     decision = evaluate_invalidation(
-        _row(daily_rvol="1.2"),
+        _row(daily_rvol="0.8"),
         _linked_news(),
         _context(),
         setup_validity=_validity(),
