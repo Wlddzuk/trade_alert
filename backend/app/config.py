@@ -72,9 +72,47 @@ class BenzingaConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TelegramConfig:
+    bot_token: str | None
+    operator_chat_id: str | None
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> "TelegramConfig":
+        return cls(
+            bot_token=_clean_optional(env.get("TELEGRAM_BOT_TOKEN")),
+            operator_chat_id=_clean_optional(env.get("TELEGRAM_OPERATOR_CHAT_ID")),
+        )
+
+    @property
+    def is_configured(self) -> bool:
+        return self.bot_token is not None and self.operator_chat_id is not None
+
+
+@dataclass(frozen=True, slots=True)
+class OpenAIConfig:
+    api_key: str | None
+    model: str
+    temperature: float
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> "OpenAIConfig":
+        return cls(
+            api_key=_clean_optional(env.get("OPENAI_API_KEY")),
+            model=env.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
+            temperature=float(env.get("OPENAI_TEMPERATURE", "0.1")),
+        )
+
+    @property
+    def is_configured(self) -> bool:
+        return self.api_key is not None
+
+
+@dataclass(frozen=True, slots=True)
 class AppConfig:
     polygon: PolygonConfig
     benzinga: BenzingaConfig
+    telegram: TelegramConfig
+    openai: OpenAIConfig
     dashboard_password: str | None
     dashboard_session_secret: str | None
     dashboard_session_cookie_name: str
@@ -85,6 +123,8 @@ class AppConfig:
         return cls(
             polygon=PolygonConfig.from_env(source),
             benzinga=BenzingaConfig.from_env(source),
+            telegram=TelegramConfig.from_env(source),
+            openai=OpenAIConfig.from_env(source),
             dashboard_password=_clean_optional(source.get("DASHBOARD_PASSWORD")),
             dashboard_session_secret=_clean_optional(source.get("DASHBOARD_SESSION_SECRET")),
             dashboard_session_cookie_name=source.get(

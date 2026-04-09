@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from dataclasses import dataclass
 
 from .context_features import ContextFeatures
@@ -63,6 +64,8 @@ def project_strategy_row(
     trigger_evaluation: TriggerEvaluation | None = None,
     invalidation: InvalidationDecision | None = None,
     defaults: StrategyDefaults | None = None,
+    sentiment_multiplier: Decimal | None = None,
+    adaptive_adjustment: Decimal | None = None,
 ) -> StrategyProjection:
     stage_tag = derive_stage_tag(
         setup_validity,
@@ -76,6 +79,8 @@ def project_strategy_row(
         trigger_evaluation=trigger_evaluation,
         invalidation=invalidation,
         defaults=defaults,
+        sentiment_multiplier=sentiment_multiplier,
+        adaptive_adjustment=adaptive_adjustment,
     )
     primary_invalid_reason = None
     if invalidation is not None and invalidation.invalidated and invalidation.reason is not None:
@@ -98,3 +103,4 @@ def project_strategy_row(
         trigger_evaluation=trigger_evaluation,
         invalidation=invalidation,
     )
+

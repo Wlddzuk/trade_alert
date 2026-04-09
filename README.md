@@ -2,9 +2,10 @@
 
 Buy Signal is an operator-facing momentum scanner and semi-automated paper-trading workflow for news-driven US equities.
 
-The shipped `v1.0` shape is:
+The current shape is:
 
 - scanner-first
+- dynamic-universe discovery, not static symbol-only scanning
 - Telegram-led for alerts and operator decisions
 - paper-trading-first, not live execution
 - read-only dashboard for monitoring, logs, trade review, and paper P&L
@@ -16,7 +17,7 @@ This README is the practical operator and developer guide for the current repo: 
 At a high level, the system is designed to:
 
 - ingest market data and news
-- filter to a US-equity universe
+- discover a dynamic tradable universe
 - rank momentum-pullback candidates
 - identify trigger-ready setups
 - send Telegram alerts for qualifying setups
@@ -26,7 +27,7 @@ At a high level, the system is designed to:
 
 The intended workflow is:
 
-1. The scanner surfaces ranked candidates.
+1. The scanner discovers symbols through a 3-layer universe pipeline.
 2. A valid setup becomes `building` or `trigger_ready`.
 3. If the setup passes entry-quality and session rules, it becomes actionable in Telegram.
 4. You approve, reject, or adjust the setup.
@@ -35,7 +36,15 @@ The intended workflow is:
 
 ## Current Repo State
 
-This repo contains a working Python backend plus archived planning and verification artifacts for `v1.0`.
+This repo now contains a working Python backend, a live scanner runner, a built-in ASGI scanner loop, and archived planning and verification artifacts for `v1.0`.
+
+The biggest recent runtime change is dynamic universe discovery:
+
+- Layer 1: Benzinga news firehose with no ticker filter
+- Layer 2: Finnhub sector peer expansion with 24-hour cache
+- Layer 3: yfinance small-cap movers screener
+
+That means the scanner is no longer limited to a static seed-symbol list. Seed names still act as a priority boost, but unknown names can now enter the universe through news, peers, or movers.
 
 Important limitation:
 
@@ -51,7 +60,7 @@ That means:
 ## Repo Layout
 
 - [backend](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend): Python backend
-- [backend/app/main.py](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/main.py): ASGI app entrypoint and runtime composition
+- [backend/app/main.py](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/main.py): ASGI app entrypoint, runtime composition, and built-in background scanner loop
 - [backend/app/config.py](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/config.py): supported environment variables
 - [backend/app/scanner](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/scanner): scanner, setup validity, trigger, invalidation, ranking
 - [backend/app/alerts](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/alerts): Telegram message rendering, alert emission, approval workflow, action execution
@@ -59,6 +68,7 @@ That means:
 - [backend/app/paper](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/paper): paper broker and exits
 - [backend/app/audit](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/app/audit): lifecycle log, trade review, P&L
 - [backend/tests](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/tests): current test suite
+- [backend/scan_runner.py](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/scan_runner.py): CLI live scanner with the 3-layer discovery model
 - [.planning/milestones/v1.0-ROADMAP.md](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/.planning/milestones/v1.0-ROADMAP.md): archived shipped milestone scope
 - [.planning/milestones/v1.0-MILESTONE-AUDIT.md](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/.planning/milestones/v1.0-MILESTONE-AUDIT.md): archived milestone audit
 
@@ -115,9 +125,26 @@ uvicorn app.main:app --reload
 
 Notes:
 
-- `uvicorn` is not declared in [backend/pyproject.toml](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/pyproject.toml), so install it separately if needed.
+- `uvicorn` is declared in [backend/pyproject.toml](/Users/waliddali-bey/Documents/GettingStarted/buy_signal/backend/pyproject.toml).
 - The root dashboard path redirects to `/dashboard`.
 - Telegram webhook route is `/telegram/webhook`.
+- The ASGI app now starts a background scanner loop on lifespan startup.
+
+### 5. Run the CLI scanner directly
+
+If you want the console scanner instead of the ASGI-hosted loop:
+
+```bash
+cd backend
+python scan_runner.py
+```
+
+This scanner currently uses:
+
+- Benzinga for the news firehose
+- Finnhub for quotes and sector peers
+- Polygon for daily bars and RVOL history
+- yfinance for intraday bars and small-cap mover discovery
 
 ## Supported Environment Variables
 
@@ -131,6 +158,8 @@ The repo currently reads these variables in [backend/app/config.py](/Users/walid
 - `BENZINGA_API_KEY`
 - `BENZINGA_BASE_URL`
 - `BENZINGA_TIMEOUT_SECONDS`
+- `FINNHUB_API_KEY` for quotes plus sector-peer expansion
+- `SCAN_INTERVAL_SEC` for the ASGI scanner loop interval
 
 ### Dashboard Auth
 
@@ -143,9 +172,18 @@ Example:
 ```bash
 export POLYGON_API_KEY="your-polygon-key"
 export BENZINGA_API_KEY="your-benzinga-key"
+export FINNHUB_API_KEY="your-finnhub-key"
 export DASHBOARD_PASSWORD="choose-a-password"
 export DASHBOARD_SESSION_SECRET="choose-a-long-random-secret"
+export SCAN_INTERVAL_SEC="60"
 ```
+
+### Data Source Responsibilities
+
+- Benzinga: recent news and ticker discovery
+- Finnhub: real-time quotes and sector peer expansion
+- Polygon: daily history for ADV and daily RVOL
+- yfinance: 1-minute intraday bars and small-cap movers screener
 
 ## Telegram Setup
 
@@ -255,6 +293,67 @@ See:
 This is the most important operator section.
 
 The system is not a generic stock screener. It is opinionated around news-driven momentum pullbacks.
+
+### Dynamic Universe Discovery
+
+The scanner now builds its universe in three layers.
+
+#### Layer 1: Benzinga News Firehose
+
+The scanner fetches recent Benzinga news without a ticker filter and extracts all mentioned symbols.
+
+This is the primary discovery layer because it catches:
+
+- known names you already care about
+- unknown names that just hit the tape
+- names outside the old seed-symbol list
+
+#### Layer 2: Finnhub Sector Peer Expansion
+
+When the news mentions a symbol, the scanner can expand into sector peers using Finnhub and cache those peers for 24 hours.
+
+Example:
+
+- if news mentions `CVX`
+- peer expansion can add names like `OXY`, `COP`, or `DVN`
+
+This is useful when:
+
+- the first headline lands on one name
+- but sympathy or sector rotation may matter for related names
+
+#### Layer 3: yfinance Small-Cap Movers
+
+The scanner also asks yfinance for small-cap US movers that are already moving on price and volume.
+
+This layer is meant to catch names that:
+
+- are spiking before good ticker tagging shows up in news
+- are moving enough to matter
+- may not yet be in your normal symbol mental map
+
+#### Slot Reservation
+
+The discovery layers do not compete in a pure first-come queue.
+
+The current allocation is:
+
+- up to 35 news symbols
+- up to 10 peer symbols
+- up to 10 mover symbols
+
+That prevents the news firehose from crowding out peer and mover discovery entirely.
+
+#### Watchlist Symbols
+
+Peer and mover names without linked news are still useful.
+
+The system keeps them visible as a watchlist rather than forcing them through the full news-driven signal chain immediately.
+
+Interpretation:
+
+- watchlist names are worth monitoring
+- but they are not yet full news-backed signal candidates
 
 ### Core Signal Idea
 
@@ -483,6 +582,22 @@ Good mental model:
 
 - scanner stage answers: “is the setup structurally there?”
 - entry disposition answers: “am I allowed to take it now?”
+- discovery source answers: “how did this name enter the universe in the first place?”
+
+### How To Read Discovery Source in Practice
+
+This is the practical interpretation of the new universe model:
+
+- `news` source: strongest default context because the symbol already has a linked catalyst
+- `peer` source: sympathy or sector read-through candidate; often needs confirmation
+- `mover` source: interesting price-and-volume anomaly, but not necessarily a tradable news setup yet
+
+If a name is only in the watchlist through `peer` or `mover`, treat it as:
+
+- “pay attention”
+- not “blindly take it”
+
+You should expect the highest-conviction setups to still come from names with real linked news and valid pullback structure.
 
 ## Suggested `.env` For Current Repo
 
@@ -491,8 +606,10 @@ For the code that exists today, a minimal local setup looks like:
 ```bash
 POLYGON_API_KEY=your_polygon_key
 BENZINGA_API_KEY=your_benzinga_key
+FINNHUB_API_KEY=your_finnhub_key
 DASHBOARD_PASSWORD=choose_a_password
 DASHBOARD_SESSION_SECRET=choose_a_long_random_secret
+SCAN_INTERVAL_SEC=60
 ```
 
 For future live Telegram wiring, you will likely also want:

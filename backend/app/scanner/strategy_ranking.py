@@ -22,7 +22,17 @@ def score_candidate(
     trigger_evaluation: TriggerEvaluation | None = None,
     invalidation: InvalidationDecision | None = None,
     defaults: StrategyDefaults | None = None,
+    sentiment_multiplier: Decimal | None = None,
+    adaptive_adjustment: Decimal | None = None,
 ) -> int:
+    """Score a candidate row with optional LLM sentiment and adaptive learning adjustments.
+
+    The scoring pipeline is:
+    1. Compute raw rule-based score (0–100)
+    2. Apply sentiment multiplier (0.5x–1.5x) from LLM analysis
+    3. Add adaptive adjustment points (±15) from historical learning
+    4. Clamp final result to 0–100
+    """
     strategy_defaults = defaults or StrategyDefaults()
 
     if not setup_validity.setup_valid or (invalidation is not None and invalidation.invalidated):
@@ -61,4 +71,14 @@ def score_candidate(
         score += Decimal("8")
         if trigger_evaluation.bullish_confirmation:
             score += Decimal("3")
+
+    # ── Intelligence layer adjustments ──────────────────────────────
+    # Apply LLM sentiment multiplier (scales score by 0.5x to 1.5x)
+    if sentiment_multiplier is not None:
+        score = score * sentiment_multiplier
+
+    # Apply adaptive learning adjustment (adds/subtracts up to ±15 points)
+    if adaptive_adjustment is not None:
+        score = score + adaptive_adjustment
+
     return _clamp_score(score)

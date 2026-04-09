@@ -43,24 +43,42 @@ def _trade_buttons(trade: OpenTradeSnapshot) -> tuple[TelegramButton, ...]:
 
 
 def render_pre_entry_alert(alert: PreEntryAlert) -> RenderedTelegramMessage:
+    stage_icon = {"building": "🔨", "trigger_ready": "⚡", "invalidated": "❌"}.get(
+        alert.projection.stage_tag.value, "❓"
+    )
+    stage_label = alert.projection.stage_tag.value.replace("_", " ")
+    catalyst = _label(alert.projection.row.catalyst_tag)
+
+    # Compute R:R
+    entry = alert.proposal.entry_price
+    stop = alert.proposal.stop_price
+    target = alert.proposal.target_price
+    risk = entry - stop
+    reward = target - entry
+    rr = f"1:{float(reward / risk):.1f}" if risk > 0 else "n/a"
+
     lines = [
-        f"[{_label(alert.state)}] {alert.symbol}",
-        f"Catalyst: {_label(alert.projection.row.catalyst_tag)} | {alert.projection.row.headline}",
-        f"Setup: {_label(alert.projection.stage_tag)}",
-        (
-            "Entry / Stop / Target: "
-            f"{_format_decimal(alert.proposal.entry_price)} / "
-            f"{_format_decimal(alert.proposal.stop_price)} / "
-            f"{_format_decimal(alert.proposal.target_price)}"
-        ),
-        f"Score / Rank: {alert.projection.score} / #{alert.rank}",
+        f"🔔 [{_label(alert.state)}] {alert.symbol}",
+        "",
+        f"🟢 BUY  │  score {alert.projection.score}/100  │  {stage_icon} {stage_label}",
+        "",
+        f"Entry:    {_format_decimal(entry)}",
+        f"Stop:     {_format_decimal(stop)}  🛑",
+        f"Target:   {_format_decimal(target)}  🎯",
+        "",
+        f"R:R  {rr}  │  Risk ${_format_decimal(risk)}/share",
+        "",
+        f"📊 Catalyst: {catalyst}",
     ]
 
     if alert.projection.supporting_reasons:
-        lines.append(f"Context: {', '.join(alert.projection.supporting_reasons)}")
+        lines.append(f"   {', '.join(alert.projection.supporting_reasons)}")
+
+    lines.append("")
+    lines.append(f"💡 {alert.projection.row.headline[:55]}")
 
     if alert.display_reason is not None:
-        lines.append(f"Status: {alert.display_reason}")
+        lines.append(f"⚠️ {alert.display_reason}")
 
     return RenderedTelegramMessage(text="\n".join(lines), buttons=_entry_buttons(alert))
 

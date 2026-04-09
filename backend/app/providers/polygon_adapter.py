@@ -185,7 +185,7 @@ class PolygonSnapshotProvider(MarketDataProvider):
             raise ProviderPayloadError("polygon", "expected mapping payload")
 
         status = str(payload.get("status", "")).upper()
-        if status and status != "OK":
+        if status and status not in ("OK", "DELAYED"):
             _translate_polygon_error(payload)
 
         raw_tickers = payload.get("tickers", [])
@@ -257,7 +257,7 @@ class PolygonSnapshotProvider(MarketDataProvider):
             raise ProviderPayloadError("polygon", "expected mapping payload")
 
         status = str(payload.get("status", "")).upper()
-        if status and status != "OK":
+        if status and status not in ("OK", "DELAYED"):
             _translate_polygon_error(payload)
 
         raw_results = payload.get("results", [])

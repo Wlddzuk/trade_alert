@@ -45,6 +45,30 @@ class TelegramTransportReceipt:
         object.__setattr__(self, "delivery_id", cleaned_delivery_id)
 
 
+@dataclass(frozen=True, slots=True)
+class TelegramEditRequest:
+    chat_id: str
+    message_id: str
+    text: str
+
+    def __post_init__(self) -> None:
+        cleaned_chat_id = self.chat_id.strip()
+        cleaned_message_id = self.message_id.strip()
+        cleaned_text = self.text.strip()
+        if not cleaned_chat_id:
+            raise ValueError("chat_id must not be empty")
+        if not cleaned_message_id:
+            raise ValueError("message_id must not be empty")
+        if not cleaned_text:
+            raise ValueError("text must not be empty")
+        object.__setattr__(self, "chat_id", cleaned_chat_id)
+        object.__setattr__(self, "message_id", cleaned_message_id)
+        object.__setattr__(self, "text", cleaned_text)
+
+
 class TelegramTransport(Protocol):
     def send(self, request: TelegramTransportRequest) -> TelegramTransportReceipt:
+        ...
+
+    def edit(self, request: TelegramEditRequest) -> None:
         ...
