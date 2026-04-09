@@ -130,7 +130,11 @@ def test_render_pre_entry_alert_includes_context_levels_and_rank() -> None:
     rendered = render_pre_entry_alert(alert)
 
     assert "[Actionable] AKRX" in rendered.text
-    assert "Catalyst: Breaking News | AKRX extends catalyst window" in rendered.text
-    assert "Entry / Stop / Target: 12.45 / 11.95 / 13.6" in rendered.text
-    assert "Score / Rank: 94 / #1" in rendered.text
-    assert "Context: move=18.2%, daily_rvol=4.1x, trigger=15s" in rendered.text
+    assert "Catalyst: Breaking News" in rendered.text
+    assert "Entry:    12.45" in rendered.text
+    assert "Stop:     11.95" in rendered.text
+    assert "Target:   13.6" in rendered.text
+    assert "score 94/100" in rendered.text
+    assert "trigger ready" in rendered.text
+    assert "AKRX extends catalyst window" in rendered.text
+    assert "move=18.2%, daily_rvol=4.1x, trigger=15s" in rendered.text

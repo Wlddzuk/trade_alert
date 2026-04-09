@@ -14,7 +14,7 @@ def _as_decimal(value: Decimal | float | int | str, *, field_name: str) -> Decim
 @dataclass(frozen=True, slots=True)
 class StrategyDefaults:
     max_catalyst_age_minutes: int = 90
-    min_move_on_day_percent: Decimal | float | int | str = Decimal("8")
+    min_move_on_day_percent: Decimal | float | int | str = Decimal("5")
     min_daily_relative_volume: Decimal | float | int | str = Decimal("2.0")
     min_short_term_relative_volume: Decimal | float | int | str = Decimal("1.5")
     min_pullback_retracement_percent: Decimal | float | int | str = Decimal("35")

@@ -124,6 +124,9 @@ def parse_callback_data(
 
 @dataclass(slots=True)
 class TelegramActionRegistry:
+    _MAX_ALERTS: int = 500
+    _MAX_TRADES: int = 200
+    _MAX_CALLBACKS: int = 1000
     _alerts: dict[str, _AlertRecord] = field(default_factory=dict)
     _latest_alert_by_symbol: dict[str, str] = field(default_factory=dict)
     _trades: dict[str, _TradeRecord] = field(default_factory=dict)
@@ -137,10 +140,13 @@ class TelegramActionRegistry:
         latest_id = self._latest_alert_by_symbol.get(alert.symbol)
         if latest_id is None:
             self._latest_alert_by_symbol[alert.symbol] = alert.alert_id
-            return
-        latest_record = self._alerts[latest_id]
-        if alert.surfaced_at >= latest_record.alert.surfaced_at:
+        elif alert.surfaced_at >= self._alerts[latest_id].alert.surfaced_at:
             self._latest_alert_by_symbol[alert.symbol] = alert.alert_id
+        # Evict oldest non-actionable alerts if over cap
+        if len(self._alerts) > self._MAX_ALERTS:
+            stale = [k for k, v in self._alerts.items() if not v.actionable]
+            for old_key in stale[: len(self._alerts) - self._MAX_ALERTS]:
+                del self._alerts[old_key]
 
     def mark_alert_terminal(self, alert_id: str, status: str) -> None:
         record = self._alerts[alert_id]
@@ -207,6 +213,11 @@ class TelegramActionRegistry:
 
     def remember_callback_response(self, callback_query_id: str, response: str) -> None:
         self._responses_by_callback_id[callback_query_id] = response
+        # Evict oldest callback responses if over cap
+        if len(self._responses_by_callback_id) > self._MAX_CALLBACKS:
+            excess = len(self._responses_by_callback_id) - self._MAX_CALLBACKS
+            for old_key in list(self._responses_by_callback_id)[:excess]:
+                del self._responses_by_callback_id[old_key]
 
     def resolve(self, callback: ParsedTelegramCallback) -> ResolvedTelegramAction:
         if callback.action in {
@@ -276,5 +287,5 @@ class TelegramActionRegistry:
     @staticmethod
     def normalize_observed_at(value: datetime | None) -> datetime:
         if value is None:
-            return datetime.now(tz=ensure_utc(datetime.now().astimezone(), field_name="value").tzinfo)
+            return datetime.now(UTC)
         return ensure_utc(value, field_name="observed_at")

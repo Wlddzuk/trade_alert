@@ -102,6 +102,8 @@ class SentimentAnalyzer:
         self.max_tokens = max_tokens
         # In-memory cache: (symbol, headline) → verdict
         self._cache: dict[tuple[str, str], SentimentVerdict] = {}
+        # Shared aiohttp session — created lazily, reused across calls
+        self._session: Any | None = None
 
     async def analyze(
         self,
@@ -149,6 +151,20 @@ class SentimentAnalyzer:
                 results[symbol] = verdict
         return results
 
+    async def _get_session(self) -> Any:
+        """Return (and lazily create) the shared aiohttp session."""
+        import aiohttp
+
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=15),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+        return self._session
+
     async def _call_llm(
         self,
         symbol: str,
@@ -156,8 +172,6 @@ class SentimentAnalyzer:
         body: str | None,
     ) -> SentimentVerdict:
         """Make the actual OpenAI API call."""
-        import aiohttp
-
         user_prompt = _build_user_prompt(symbol, headline, body)
 
         payload = {
@@ -170,18 +184,13 @@ class SentimentAnalyzer:
             ],
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+        session = await self._get_session()
+        async with session.post(
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
 
         content = data["choices"][0]["message"]["content"]
         return _parse_llm_response(content, symbol, headline)
@@ -189,3 +198,9 @@ class SentimentAnalyzer:
     def clear_cache(self) -> None:
         """Clear the in-memory sentiment cache."""
         self._cache.clear()
+
+    async def close(self) -> None:
+        """Close the shared aiohttp session."""
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+            self._session = None

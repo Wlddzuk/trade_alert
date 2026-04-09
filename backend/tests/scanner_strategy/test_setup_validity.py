@@ -102,7 +102,7 @@ def test_strategy_defaults_expose_phase_three_defaults() -> None:
     defaults = StrategyDefaults()
 
     assert defaults.max_catalyst_age_minutes == 90
-    assert defaults.min_move_on_day_percent == Decimal("8")
+    assert defaults.min_move_on_day_percent == Decimal("5")
     assert defaults.min_daily_relative_volume == Decimal("2.0")
     assert defaults.min_short_term_relative_volume == Decimal("1.5")
     assert defaults.min_pullback_retracement_percent == Decimal("35")

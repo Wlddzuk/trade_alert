@@ -22,6 +22,8 @@ class DeliveryDecision:
 
 
 class TelegramDeliveryState:
+    _MAX_SYMBOLS = 500  # evict oldest entries beyond this threshold
+
     def __init__(self) -> None:
         self._history: dict[str, list[PreEntryAlertState]] = {}
 
@@ -56,6 +58,12 @@ class TelegramDeliveryState:
 
         history.append(alert.state)
         self._history[alert.symbol] = history
+
+        # Evict oldest symbols if we exceed the cap
+        if len(self._history) > self._MAX_SYMBOLS:
+            excess = len(self._history) - self._MAX_SYMBOLS
+            for old_key in list(self._history)[:excess]:
+                del self._history[old_key]
 
         reason = "first_surface"
         if len(history) > 1:

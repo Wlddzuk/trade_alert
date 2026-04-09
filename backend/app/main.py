@@ -197,13 +197,45 @@ def create_telegram_operator_runtime(
 
 # ── Built-in scanner loop (lifespan background task) ─────────────────────────
 
-_SCAN_SEED = [
-    "AAPL","TSLA","NVDA","AMD","META","AMZN","MSFT","GOOGL","NFLX",
-    "COIN","SOUN","MARA","RIOT","PLTR","SOFI","NIO","RIVN","SMCI",
-    "ARM","HOOD","RBLX","SNAP","UBER","CRWD","APLD","IONQ",
-    "INTC","MU","NET","SHOP","TSM","ADBE","PATH",
-]
 _SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL_SEC", "60"))
+_MIN_GAP_PERCENT = float(os.environ.get("MIN_GAP_PERCENT", "5.0"))
+
+
+def _discover_movers() -> list[dict]:
+    """Fetch today's top gainers from Yahoo Finance screener.
+
+    Returns list of dicts with keys: symbol, change_percent, price, volume,
+    avg_volume, rvol, prev_close, day_high, day_low.
+    Runs synchronously (yfinance uses requests internally).
+    """
+    try:
+        screen = yf.screen("day_gainers", count=50)
+        if not screen or "quotes" not in screen:
+            return []
+    except Exception:
+        return []
+
+    movers = []
+    for q in screen["quotes"]:
+        sym = q.get("symbol")
+        pct = q.get("regularMarketChangePercent", 0)
+        vol = q.get("regularMarketVolume", 0)
+        avg_vol = q.get("averageDailyVolume3Month", 1) or 1
+        if not sym or pct < _MIN_GAP_PERCENT:
+            continue
+        movers.append({
+            "symbol": sym,
+            "change_percent": round(pct, 2),
+            "price": q.get("regularMarketPrice", 0),
+            "volume": vol,
+            "avg_volume": avg_vol,
+            "rvol": round(vol / avg_vol, 2) if avg_vol else 0,
+            "prev_close": q.get("regularMarketPreviousClose", 0),
+            "day_high": q.get("regularMarketDayHigh", 0),
+            "day_low": q.get("regularMarketDayLow", 0),
+        })
+    movers.sort(key=lambda m: m["change_percent"], reverse=True)
+    return movers
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 
@@ -350,14 +382,14 @@ async def _scanner_loop(
                     )
                     try:
                         if _countdown_msg_id is None:
-                            receipt = _telegram_transport.send(TelegramTransportRequest(
+                            receipt = await _telegram_transport.async_send(TelegramTransportRequest(
                                 chat_id=_startup_config.telegram.operator_chat_id,
                                 text=countdown_text,
                             ))
                             _countdown_msg_id = receipt.delivery_id
                             logger.info("Telegram: countdown message sent (msg_id=%s)", _countdown_msg_id)
                         else:
-                            _telegram_transport.edit(TelegramEditRequest(
+                            await _telegram_transport.async_edit(TelegramEditRequest(
                                 chat_id=_startup_config.telegram.operator_chat_id,
                                 message_id=_countdown_msg_id,
                                 text=countdown_text,
@@ -373,7 +405,7 @@ async def _scanner_loop(
             if _countdown_msg_id is not None and _telegram_transport is not None:
                 try:
                     from app.alerts.telegram_transport import TelegramEditRequest
-                    _telegram_transport.edit(TelegramEditRequest(
+                    await _telegram_transport.async_edit(TelegramEditRequest(
                         chat_id=_startup_config.telegram.operator_chat_id,
                         message_id=_countdown_msg_id,
                         text="🟢 <b>Market is OPEN</b> — scanning now!",
@@ -383,13 +415,30 @@ async def _scanner_loop(
                 _countdown_msg_id = None
 
             logger.info("── Scanner tick at %s ──", now.strftime("%H:%M:%S UTC"))
+            loop = asyncio.get_running_loop()
             try:
-                # 1. Benzinga news — no ticker filter, discover all movers
+                # 1a. Discover real movers from Yahoo Finance (gappers ≥ MIN_GAP_PERCENT)
+                movers = await loop.run_in_executor(None, _discover_movers)
+                mover_syms = [m["symbol"] for m in movers]
+                mover_snapshots_prefill: dict[str, dict] = {m["symbol"]: m for m in movers}
+                logger.info(
+                    "Yahoo movers: %d stocks gapping ≥%.0f%% — %s",
+                    len(movers), _MIN_GAP_PERCENT,
+                    ", ".join(f'{m["symbol"]} +{m["change_percent"]}%' for m in movers[:8]),
+                )
+
+                # 1b. Benzinga news — enrich movers with catalyst + pick up any extras
                 news_batch  = await benzinga.fetch_recent_news(limit=100)
                 news_map    = latest_news_by_symbol(news_batch.records)
-                active_syms = list(news_map.keys())[:40]
+                bz_syms     = set(news_map.keys())
 
-                logger.info("Benzinga: %d articles → %d unique symbols", len(news_batch.records), len(active_syms))
+                # Priority: movers first (real gappers), then Benzinga-only symbols
+                active_syms = list(dict.fromkeys(mover_syms + [s for s in bz_syms if s not in mover_syms]))[:50]
+
+                logger.info(
+                    "Symbol universe: %d movers + %d Benzinga-only → %d total",
+                    len(mover_syms), len([s for s in active_syms if s not in mover_syms]), len(active_syms),
+                )
                 if not active_syms:
                     logger.info("No active symbols, sleeping %ds", _SCAN_INTERVAL)
                     await asyncio.sleep(_SCAN_INTERVAL)
@@ -430,6 +479,24 @@ async def _scanner_loop(
 
                 logger.info("Finnhub: %d/%d symbols got quotes", len(snapshots), len(active_syms))
 
+                # 2b. Pre-fill movers from Yahoo data (covers symbols Finnhub missed)
+                for sym, mdata in mover_snapshots_prefill.items():
+                    if sym not in snapshots and mdata["price"]:
+                        try:
+                            snapshots[sym] = MarketSnapshot(
+                                symbol=sym, provider="yahoo_screener",
+                                observed_at=now, received_at=now,
+                                last_price=str(mdata["price"]),
+                                session_volume=int(mdata["volume"]),
+                                previous_close=str(mdata["prev_close"]) if mdata["prev_close"] else None,
+                                high_price=str(mdata["day_high"]) if mdata["day_high"] else None,
+                                low_price=str(mdata["day_low"]) if mdata["day_low"] else None,
+                            )
+                        except Exception:
+                            continue
+                if mover_snapshots_prefill:
+                    logger.info("Yahoo pre-fill: %d mover snapshots added", len([s for s in mover_snapshots_prefill if s in snapshots]))
+
                 # 3. Polygon daily bars (RVOL history) — limit to 4 symbols to stay within free-tier rate limits
                 daily_bars = ()
                 poly_syms = [s for s in active_syms if s in snapshots][:4]
@@ -442,7 +509,6 @@ async def _scanner_loop(
                     logger.warning("Polygon daily bars failed: %s", poly_err)
 
                 # 4. yfinance intraday bars (EMA context) — run in thread
-                loop = asyncio.get_event_loop()
                 def _yf_bars():
                     import math
                     from app.providers.models import IntradayBar
@@ -522,12 +588,37 @@ async def _scanner_loop(
                         for sym in active_syms:
                             ln = news_map.get(sym)
                             if ln:
-                                items.append((sym, ln.headline, None))
+                                body = getattr(ln.latest_event, "summary", None)
+                                items.append((sym, ln.headline, body))
                         if items:
                             sentiment_verdicts = await sentiment_analyzer.analyze_batch(items)
                             logger.info("LLM analyzed %d/%d headlines", len(sentiment_verdicts), len(items))
                     except Exception as sent_err:
                         logger.warning("Sentiment batch failed: %s", sent_err)
+
+                # 5b. Synthesize news entries for movers without Benzinga coverage
+                from app.providers.models import NewsEvent, CatalystTag
+                from app.scanner.models import LinkedNewsEvent
+                for sym in mover_syms:
+                    if sym not in news_map and sym in snapshots:
+                        mdata = mover_snapshots_prefill[sym]
+                        synthetic_event = NewsEvent(
+                            event_id=f"yf-gapper-{sym}-{now.isoformat()}",
+                            provider="yahoo_screener",
+                            published_at=now,
+                            received_at=now,
+                            headline=f"{sym} gapping +{mdata['change_percent']}% on unusual volume",
+                            symbols=(sym,),
+                            catalyst_tag=CatalystTag.UNKNOWN,
+                            summary=f"Detected via Yahoo Finance screener: +{mdata['change_percent']}% with RVOL {mdata['rvol']}x",
+                        )
+                        news_map[sym] = LinkedNewsEvent(
+                            symbol=sym,
+                            latest_event=synthetic_event,
+                            latest_event_at=now,
+                            related_events=(synthetic_event,),
+                        )
+                        logger.info("Synthetic news created for mover: %s +%.1f%%", sym, mdata["change_percent"])
 
                 # 6. Build CandidateRows via full signal chain + intelligence
                 candidate_rows = []
@@ -576,6 +667,28 @@ async def _scanner_loop(
                         historical_intraday_bars=intraday,
                         lookback_days=20,
                     )
+                    # Patch: inject time-adjusted Yahoo RVOL for movers missing Polygon daily bars
+                    if metrics.daily_relative_volume is None and sym in mover_snapshots_prefill:
+                        mdata = mover_snapshots_prefill[sym]
+                        from app.scanner.metrics import MarketMetrics
+                        from zoneinfo import ZoneInfo
+                        _et_now = now.astimezone(ZoneInfo("America/New_York"))
+                        # Minutes elapsed since 9:30 AM ET (max 390 min trading day)
+                        _mins_since_open = max(1, (_et_now.hour * 60 + _et_now.minute) - 570)
+                        _day_fraction = min(1.0, _mins_since_open / 390)
+                        # Project current volume to full-day pace
+                        projected_vol = mdata["volume"] / _day_fraction if _day_fraction > 0 else mdata["volume"]
+                        avg_vol = mdata["avg_volume"] or 1
+                        yahoo_rvol = Decimal(str(round(projected_vol / avg_vol, 2)))
+                        yahoo_adv = Decimal(str(avg_vol))
+                        metrics = MarketMetrics(
+                            average_daily_volume=yahoo_adv,
+                            daily_relative_volume=yahoo_rvol,
+                            short_term_relative_volume=metrics.short_term_relative_volume or yahoo_rvol,
+                            gap_percent=metrics.gap_percent,
+                            change_from_prior_close_percent=metrics.change_from_prior_close_percent,
+                            pullback_from_high_percent=metrics.pullback_from_high_percent,
+                        )
                     row = build_candidate_row(enriched_snapshot, linked_news, metrics)
                     if row is None:
                         continue
@@ -593,7 +706,6 @@ async def _scanner_loop(
                         pullback_volume_lighter=pullback_lighter,
                     )
                     validity    = evaluate_setup_validity(row, linked_news, context)
-
                     # Trigger: preferred=15s (no 15s bars yet), fallback=60s (yfinance 1m)
                     trigger_sel  = resolve_trigger_bars(preferred_bars=(), fallback_bars=intraday)
                     trigger      = evaluate_first_break_trigger(trigger_sel)
@@ -709,8 +821,7 @@ async def _scanner_loop(
                                     if ctx.pullback_low is not None and ctx.pullback_low < entry_price:
                                         stop_price = ctx.pullback_low
                             if stop_price is None:
-                                stop_price = round(float(entry_price) * Decimal("0.98"), 2)
-                                stop_price = Decimal(str(stop_price))
+                                stop_price = (entry_price * Decimal("0.98")).quantize(Decimal("0.01"))
 
                             risk = float(entry_price) - float(stop_price)
                             if risk > 0:
@@ -760,7 +871,7 @@ async def _scanner_loop(
 
                         text = "\n".join(lines)
                         try:
-                            _telegram_transport.send(TelegramTransportRequest(
+                            await _telegram_transport.async_send(TelegramTransportRequest(
                                 chat_id=_startup_config.telegram.operator_chat_id,
                                 text=text,
                             ))
@@ -787,7 +898,7 @@ async def _scanner_loop(
                                     f"• {bp.row.symbol}  ${bp.row.price}  {bchg}  {brvol}  score {bp.score}"
                                 )
                         try:
-                            _telegram_transport.send(TelegramTransportRequest(
+                            await _telegram_transport.async_send(TelegramTransportRequest(
                                 chat_id=_startup_config.telegram.operator_chat_id,
                                 text="\n".join(summary_lines),
                             ))
@@ -802,7 +913,7 @@ async def _scanner_loop(
                             f"  │  {len(projections)} scanned  │  0 actionable"
                         )
                         try:
-                            _telegram_transport.send(TelegramTransportRequest(
+                            await _telegram_transport.async_send(TelegramTransportRequest(
                                 chat_id=_startup_config.telegram.operator_chat_id,
                                 text=heartbeat,
                             ))
@@ -893,7 +1004,7 @@ async def _lifespan(scope, receive, send) -> None:
                         "Scanner will auto-start when market opens.\n\n"
                         f"<i>Updated {now.strftime('%H:%M UTC')}</i>"
                     )
-                receipt = _telegram_transport.send(TelegramTransportRequest(
+                receipt = await _telegram_transport.async_send(TelegramTransportRequest(
                     chat_id=_startup_config.telegram.operator_chat_id,
                     text=status_text,
                 ))

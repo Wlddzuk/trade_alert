@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 import urllib.error
 import urllib.request
@@ -15,7 +17,12 @@ _TELEGRAM_API = "https://api.telegram.org"
 
 
 class HttpTelegramTransport:
-    """Real TelegramTransport that calls the Telegram Bot API via urllib."""
+    """Real TelegramTransport that calls the Telegram Bot API via urllib.
+
+    Both ``send`` and ``edit`` are synchronous (urllib). Use the async
+    wrappers ``async_send`` / ``async_edit`` from coroutines to avoid
+    blocking the event loop.
+    """
 
     def __init__(self, bot_token: str, *, timeout_seconds: float = 10.0) -> None:
         cleaned = bot_token.strip()
@@ -120,3 +127,15 @@ class HttpTelegramTransport:
                 body.get("description", "unknown Telegram API error"),
                 retryable=True,
             )
+
+    # ── Async wrappers (run blocking urllib in a thread) ────────────────────
+
+    async def async_send(self, request: TelegramTransportRequest) -> TelegramTransportReceipt:
+        """Non-blocking send — offloads to a thread so the event loop is free."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, functools.partial(self.send, request))
+
+    async def async_edit(self, request: TelegramEditRequest) -> None:
+        """Non-blocking edit — offloads to a thread so the event loop is free."""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, functools.partial(self.edit, request))
