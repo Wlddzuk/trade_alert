@@ -89,7 +89,7 @@ class BuySignalApp:
         path = str(scope.get("path", ""))
         headers = tuple(scope.get("headers", ()))
         # ── Scanner dashboard + API routes ──
-        if path == "/scanner" or path == "/scanner/":
+        if path == "/" or path == "/scanner" or path == "/scanner/":
             html = render_scanner_dashboard()
             await _send_bytes(send, status_code=200, body=html.encode("utf-8"), content_type=b"text/html; charset=utf-8")
             return
