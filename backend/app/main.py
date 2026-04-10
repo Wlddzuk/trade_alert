@@ -46,6 +46,8 @@ from app.scanner.setup_validity import evaluate_setup_validity
 from app.scanner.strategy_projection import project_strategy_row
 from app.scanner.trigger_logic import evaluate_first_break_trigger
 from app.scanner.trigger_policy import resolve_trigger_bars
+from app.dashboard.scanner_state import ScannerRow, get_scanner_state
+from app.dashboard.scanner_dashboard import render_scanner_dashboard
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -86,6 +88,16 @@ class BuySignalApp:
         method = str(scope.get("method", "GET"))
         path = str(scope.get("path", ""))
         headers = tuple(scope.get("headers", ()))
+        # ── Scanner dashboard + API routes ──
+        if path == "/scanner" or path == "/scanner/":
+            html = render_scanner_dashboard()
+            await _send_bytes(send, status_code=200, body=html.encode("utf-8"), content_type=b"text/html; charset=utf-8")
+            return
+        if path == "/api/scanner":
+            data = get_scanner_state().to_json_bytes()
+            await _send_bytes(send, status_code=200, body=data, content_type=b"application/json")
+            return
+
         if self.dashboard.handles_path(path):
             response = self.dashboard.handle_http_request(
                 method=method,
@@ -749,6 +761,66 @@ async def _scanner_loop(
                     logger.info("  → %s  price=%s  score=%d  stage=%s  %s",
                                 p.row.symbol, p.row.price, p.score, p.stage_tag.value,
                                 p.primary_invalid_reason or "valid")
+
+                # 5c. Push scanner data to shared state for dashboard API
+                _scanner_rows = []
+                for p in projections:
+                    r = p.row
+                    sv = p.setup_validity
+                    verdict = sentiment_verdicts.get(r.symbol)
+                    _scanner_rows.append(ScannerRow(
+                        symbol=r.symbol,
+                        price=float(r.price) if r.price is not None else None,
+                        change_percent=float(r.change_from_prior_close_percent) if r.change_from_prior_close_percent is not None else None,
+                        gap_percent=float(r.gap_percent) if r.gap_percent is not None else None,
+                        volume=r.volume,
+                        avg_daily_volume=float(r.average_daily_volume) if r.average_daily_volume is not None else None,
+                        daily_rvol=float(r.daily_relative_volume) if r.daily_relative_volume is not None else None,
+                        short_term_rvol=float(r.short_term_relative_volume) if r.short_term_relative_volume is not None else None,
+                        score=p.score,
+                        stage=p.stage_tag.value,
+                        primary_invalid_reason=p.primary_invalid_reason,
+                        headline=r.headline,
+                        catalyst_tag=r.catalyst_tag.value,
+                        catalyst_age_seconds=sv.catalyst_age_seconds if sv else None,
+                        vwap=None,  # filled below if available
+                        ema_9=None,
+                        ema_20=None,
+                        pullback_retracement_pct=None,
+                        sentiment_direction=verdict.direction.value if verdict else None,
+                        observed_at=r.observed_at.isoformat(),
+                    ))
+                # Enrich with context features where available
+                for i, p in enumerate(projections):
+                    sym = p.row.symbol
+                    snap = snapshots.get(sym)
+                    if snap:
+                        try:
+                            ctx = build_context_features(snap, intraday_by_sym.get(sym, ()))
+                            row = _scanner_rows[i]
+                            _scanner_rows[i] = ScannerRow(
+                                symbol=row.symbol, price=row.price, change_percent=row.change_percent,
+                                gap_percent=row.gap_percent, volume=row.volume, avg_daily_volume=row.avg_daily_volume,
+                                daily_rvol=row.daily_rvol, short_term_rvol=row.short_term_rvol,
+                                score=row.score, stage=row.stage, primary_invalid_reason=row.primary_invalid_reason,
+                                headline=row.headline, catalyst_tag=row.catalyst_tag,
+                                catalyst_age_seconds=row.catalyst_age_seconds,
+                                vwap=float(ctx.vwap) if ctx.vwap else None,
+                                ema_9=float(ctx.ema_9) if ctx.ema_9 else None,
+                                ema_20=float(ctx.ema_20) if ctx.ema_20 else None,
+                                pullback_retracement_pct=float(ctx.pullback_retracement_percent) if ctx.pullback_retracement_percent else None,
+                                sentiment_direction=row.sentiment_direction,
+                                observed_at=row.observed_at,
+                            )
+                        except Exception:
+                            pass
+
+                _scan_elapsed = (datetime.now(UTC) - scan_start).total_seconds()
+                get_scanner_state().update(
+                    _scanner_rows,
+                    scan_duration=_scan_elapsed,
+                    total_symbols=len(active_syms),
+                )
 
                 # 6. Push to dashboard
                 runtime_state = RuntimeWindow().status_at(now)

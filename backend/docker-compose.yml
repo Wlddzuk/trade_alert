@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  scanner:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - scanner-data:/app/data
+      - scanner-logs:/app/logs
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/scanner"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  scanner-data:
+  scanner-logs:

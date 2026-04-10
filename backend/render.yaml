@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: alpha-radar-scanner
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_OPERATOR_CHAT_ID
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: POLYGON_API_KEY
+        sync: false
+      - key: BENZINGA_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: DASHBOARD_SESSION_SECRET
+        sync: false
