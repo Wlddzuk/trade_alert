@@ -82,11 +82,14 @@ def project_strategy_row(
         sentiment_multiplier=sentiment_multiplier,
         adaptive_adjustment=adaptive_adjustment,
     )
+    # Prefer the specific setup reason (e.g. "below_vwap", "ema_misalignment")
+    # over the generic invalidation wrapper ("setup_invalid") so the dashboard
+    # shows WHY the setup failed.
     primary_invalid_reason = None
-    if invalidation is not None and invalidation.invalidated and invalidation.reason is not None:
-        primary_invalid_reason = invalidation.reason.value
-    elif not setup_validity.setup_valid and setup_validity.primary_invalid_reason is not None:
+    if not setup_validity.setup_valid and setup_validity.primary_invalid_reason is not None:
         primary_invalid_reason = setup_validity.primary_invalid_reason.value
+    elif invalidation is not None and invalidation.invalidated and invalidation.reason is not None:
+        primary_invalid_reason = invalidation.reason.value
 
     return StrategyProjection(
         row=row,

@@ -97,6 +97,9 @@ class BuySignalApp:
             data = get_scanner_state().to_json_bytes()
             await _send_bytes(send, status_code=200, body=data, content_type=b"application/json")
             return
+        if path == "/health":
+            await _send_bytes(send, status_code=200, body=b'{"status":"ok"}', content_type=b"application/json")
+            return
 
         if self.dashboard.handles_path(path):
             response = self.dashboard.handle_http_request(
@@ -521,18 +524,24 @@ async def _scanner_loop(
                     logger.warning("Polygon daily bars failed: %s", poly_err)
 
                 # 4. yfinance intraday bars (EMA context) — run in thread
-                def _yf_bars():
+                #    Batched to avoid timeouts on large symbol lists
+                _YF_BATCH_SIZE = 10
+
+                def _yf_bars_batch(symbols: list[str]) -> dict:
+                    """Download intraday bars for a batch of symbols. Returns {sym: tuple[IntradayBar]}."""
                     import math
                     from app.providers.models import IntradayBar
                     try:
-                        raw = yf.download(" ".join(active_syms), period="2d",
-                                          interval="1m", progress=False, group_by="ticker")
-                    except Exception:
+                        raw = yf.download(" ".join(symbols), period="2d",
+                                          interval="1m", progress=False, group_by="ticker",
+                                          timeout=30)
+                    except Exception as yf_err:
+                        logger.warning("yfinance batch download failed for %d symbols: %s", len(symbols), yf_err)
                         return {}
                     result = {}
-                    for sym in active_syms:
+                    for sym in symbols:
                         try:
-                            df = raw if len(active_syms) == 1 else (
+                            df = raw if len(symbols) == 1 else (
                                 raw[sym] if sym in raw.columns.get_level_values(0) else None
                             )
                             if df is None or df.empty:
@@ -556,11 +565,29 @@ async def _scanner_loop(
                                     continue
                             if bars:
                                 result[sym] = tuple(bars)
-                        except Exception:
+                        except Exception as parse_err:
+                            logger.warning("yfinance parse failed for %s: %s", sym, parse_err)
                             continue
                     return result
-                intraday_by_sym = await loop.run_in_executor(None, _yf_bars)
-                logger.info("yfinance: intraday bars for %d symbols", len(intraday_by_sym))
+
+                def _yf_bars_all():
+                    """Download intraday bars in batches of _YF_BATCH_SIZE with retry."""
+                    combined = {}
+                    for i in range(0, len(active_syms), _YF_BATCH_SIZE):
+                        batch = active_syms[i : i + _YF_BATCH_SIZE]
+                        batch_result = _yf_bars_batch(batch)
+                        if not batch_result:
+                            # Retry once on failure
+                            logger.info("yfinance: retrying batch %d-%d (%s …)", i, i + len(batch), batch[0])
+                            import time; time.sleep(2)
+                            batch_result = _yf_bars_batch(batch)
+                        combined.update(batch_result)
+                        logger.info("yfinance: batch %d-%d → %d/%d symbols got bars",
+                                    i, i + len(batch), len(batch_result), len(batch))
+                    return combined
+
+                intraday_by_sym = await loop.run_in_executor(None, _yf_bars_all)
+                logger.info("yfinance: intraday bars for %d/%d symbols", len(intraday_by_sym), len(active_syms))
 
                 # 4b. Fill missing snapshots from yfinance last bar (Finnhub rate-limit fallback)
                 from app.providers.models import MarketSnapshot as _MS
@@ -635,6 +662,7 @@ async def _scanner_loop(
                 # 6. Build CandidateRows via full signal chain + intelligence
                 candidate_rows = []
                 projections = []
+                enriched_snapshots: dict[str, MarketSnapshot] = {}  # sym → enriched (with VWAP)
                 for sym in active_syms:
                     linked_news = news_map.get(sym)
                     snapshot    = snapshots.get(sym)
@@ -668,6 +696,8 @@ async def _scanner_loop(
                                 low_price=snapshot.low_price,
                                 vwap=computed_vwap,
                             )
+
+                    enriched_snapshots[sym] = enriched_snapshot
 
                     # Pick latest bar for short-term RVOL
                     current_bar = today_bars[-1] if today_bars else None
@@ -793,7 +823,8 @@ async def _scanner_loop(
                 # Enrich with context features where available
                 for i, p in enumerate(projections):
                     sym = p.row.symbol
-                    snap = snapshots.get(sym)
+                    # Use enriched snapshot (has computed VWAP) instead of raw snapshot
+                    snap = enriched_snapshots.get(sym) or snapshots.get(sym)
                     if snap:
                         try:
                             ctx = build_context_features(snap, intraday_by_sym.get(sym, ()))

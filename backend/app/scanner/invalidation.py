@@ -55,11 +55,11 @@ def evaluate_invalidation(
     catalyst_age = catalyst_age_seconds(linked_news, observed_at=row.observed_at)
     if catalyst_age is not None and catalyst_age > strategy_defaults.max_catalyst_age_minutes * 60:
         return InvalidationDecision(True, TriggerInvalidationReason.STALE_CATALYST)
+    # Only invalidate on CONFIRMED weak volume (data present but below threshold).
+    # None means data is unavailable — not evidence of weak volume.
     if (
-        row.daily_relative_volume is None
-        or row.daily_relative_volume < strategy_defaults.min_daily_relative_volume
-        or row.short_term_relative_volume is None
-        or row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume
+        (row.daily_relative_volume is not None and row.daily_relative_volume < strategy_defaults.min_daily_relative_volume)
+        or (row.short_term_relative_volume is not None and row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume)
     ):
         return InvalidationDecision(True, TriggerInvalidationReason.WEAK_RELATIVE_VOLUME)
     if halt_active:

@@ -67,6 +67,17 @@ def score_candidate(
             score += Decimal("8")
     if context_features.pullback_volume_lighter:
         score += Decimal("4")
+
+    # Penalty for degraded context — setup valid but missing intraday data
+    _has_trend = (
+        context_features.vwap is not None
+        and context_features.ema_9 is not None
+        and context_features.ema_20 is not None
+    )
+    if not _has_trend:
+        score -= Decimal("10")  # missing VWAP/EMA = unconfirmed trend
+    if context_features.pullback_retracement_percent is None:
+        score -= Decimal("5")   # missing pullback = unconfirmed entry zone
     if trigger_evaluation is not None and trigger_evaluation.triggered:
         score += Decimal("8")
         if trigger_evaluation.bullish_confirmation:

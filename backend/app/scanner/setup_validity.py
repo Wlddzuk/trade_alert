@@ -59,9 +59,12 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.INSUFFICIENT_DAY_MOVE,
         )
+    # RVOL checks — only invalidate on CONFIRMED insufficient volume.
+    # None means data unavailable (Polygon free-tier / yfinance down),
+    # not evidence of weak volume.
     if (
-        row.daily_relative_volume is None
-        or row.daily_relative_volume < strategy_defaults.min_daily_relative_volume
+        row.daily_relative_volume is not None
+        and row.daily_relative_volume < strategy_defaults.min_daily_relative_volume
     ):
         return _invalid(
             evaluated_at=row.observed_at,
@@ -70,8 +73,8 @@ def evaluate_setup_validity(
             reason=InvalidReason.INSUFFICIENT_DAILY_RVOL,
         )
     if (
-        row.short_term_relative_volume is None
-        or row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume
+        row.short_term_relative_volume is not None
+        and row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume
     ):
         return _invalid(
             evaluated_at=row.observed_at,
@@ -79,55 +82,48 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.INSUFFICIENT_SHORT_TERM_RVOL,
         )
-    if (
-        row.price is None
-        or context_features.vwap is None
-        or context_features.ema_9 is None
-        or context_features.ema_20 is None
-    ):
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.MISSING_TREND_CONTEXT,
-        )
-    if row.price <= context_features.vwap:
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.BELOW_VWAP,
-        )
-    if context_features.ema_9 <= context_features.ema_20:
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.EMA_MISALIGNMENT,
-        )
+    # Trend context checks — only invalidate when data IS available and
+    # shows a bad setup.  Missing data (yfinance down, bars not yet
+    # available) should NOT hard-invalidate; the score penalty in
+    # strategy_ranking handles the uncertainty instead.
+    _has_trend = (
+        row.price is not None
+        and context_features.vwap is not None
+        and context_features.ema_9 is not None
+        and context_features.ema_20 is not None
+    )
+    if _has_trend:
+        if row.price <= context_features.vwap:
+            return _invalid(
+                evaluated_at=row.observed_at,
+                first_catalyst_at=first_catalyst_at,
+                catalyst_age=catalyst_age,
+                reason=InvalidReason.BELOW_VWAP,
+            )
+        if context_features.ema_9 <= context_features.ema_20:
+            return _invalid(
+                evaluated_at=row.observed_at,
+                first_catalyst_at=first_catalyst_at,
+                catalyst_age=catalyst_age,
+                reason=InvalidReason.EMA_MISALIGNMENT,
+            )
 
     retracement = context_features.pullback_retracement_percent
-    if retracement is None:
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.MISSING_PULLBACK_CONTEXT,
-        )
-    if retracement < strategy_defaults.min_pullback_retracement_percent:
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.PULLBACK_TOO_SHALLOW,
-        )
-    if retracement > strategy_defaults.max_pullback_retracement_percent:
-        return _invalid(
-            evaluated_at=row.observed_at,
-            first_catalyst_at=first_catalyst_at,
-            catalyst_age=catalyst_age,
-            reason=InvalidReason.PULLBACK_TOO_DEEP,
-        )
+    if retracement is not None:
+        if retracement < strategy_defaults.min_pullback_retracement_percent:
+            return _invalid(
+                evaluated_at=row.observed_at,
+                first_catalyst_at=first_catalyst_at,
+                catalyst_age=catalyst_age,
+                reason=InvalidReason.PULLBACK_TOO_SHALLOW,
+            )
+        if retracement > strategy_defaults.max_pullback_retracement_percent:
+            return _invalid(
+                evaluated_at=row.observed_at,
+                first_catalyst_at=first_catalyst_at,
+                catalyst_age=catalyst_age,
+                reason=InvalidReason.PULLBACK_TOO_DEEP,
+            )
 
     return SetupValidity(
         setup_valid=True,

@@ -104,5 +104,7 @@ def test_project_strategy_row_marks_invalidated_and_keeps_primary_invalid_reason
     )
 
     assert projection.stage_tag is StrategyStageTag.INVALIDATED
-    assert projection.primary_invalid_reason == TriggerInvalidationReason.SETUP_INVALID.value
+    # Specific setup reason ("stale_catalyst") takes priority over generic
+    # invalidation wrapper ("setup_invalid") so the dashboard shows WHY.
+    assert projection.primary_invalid_reason == InvalidReason.STALE_CATALYST.value
     assert projection.supporting_reasons == ("invalid=setup_invalid",)
