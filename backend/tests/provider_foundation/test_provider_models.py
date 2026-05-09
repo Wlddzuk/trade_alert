@@ -32,6 +32,23 @@ def test_app_config_reads_provider_credentials_and_defaults() -> None:
     assert config.polygon.endpoint.base_url == "https://api.polygon.io"
     assert config.benzinga.api_key == "benzinga-key"
     assert config.benzinga.endpoint.base_url == "https://api.benzinga.com"
+    assert config.agent_review.enabled is False
+    assert config.agent_review.min_score == 0
+    assert config.agent_review.timeout_seconds == 180
+
+
+def test_app_config_reads_agent_review_runtime_settings() -> None:
+    config = AppConfig.from_env(
+        {
+            "TRADINGAGENTS_REVIEW_ENABLED": "true",
+            "TRADINGAGENTS_REVIEW_MIN_SCORE": "85",
+            "TRADINGAGENTS_REVIEW_TIMEOUT_SECONDS": "45",
+        }
+    )
+
+    assert config.agent_review.enabled is True
+    assert config.agent_review.min_score == 85
+    assert config.agent_review.timeout_seconds == 45
 
 
 def test_market_snapshot_coerces_times_to_utc_and_normalizes_values() -> None:

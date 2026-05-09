@@ -31,8 +31,13 @@ class ScannerRow:
     ema_9: float | None
     ema_20: float | None
     pullback_retracement_pct: float | None
+    float_shares: float | None
     sentiment_direction: str | None  # "bullish", "bearish", "neutral"
     observed_at: str  # ISO timestamp
+    # Trigger metadata — lets the dashboard show "fired Xm ago @ $Y" so the
+    # user can open the chart at that moment and verify the setup visually.
+    trigger_fired_at: str | None = None  # ISO timestamp of trigger bar start
+    trigger_price: float | None = None   # price at which the trigger fired
 
 
 def _to_float(val: Decimal | float | int | None) -> float | None:
@@ -87,8 +92,11 @@ class ScannerState:
                     "ema_9": r.ema_9,
                     "ema_20": r.ema_20,
                     "pullback_retracement_pct": r.pullback_retracement_pct,
+                    "float_shares": r.float_shares,
                     "sentiment_direction": r.sentiment_direction,
                     "observed_at": r.observed_at,
+                    "trigger_fired_at": r.trigger_fired_at,
+                    "trigger_price": r.trigger_price,
                 }
                 for r in self._rows
             ],

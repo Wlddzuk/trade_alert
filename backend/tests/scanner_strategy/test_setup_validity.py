@@ -98,17 +98,18 @@ def test_catalyst_age_uses_first_related_headline() -> None:
     assert catalyst_age_seconds(linked_news, observed_at=datetime(2026, 3, 14, 13, 40, tzinfo=UTC)) == 2400.0
 
 
-def test_strategy_defaults_expose_phase_three_defaults() -> None:
+def test_strategy_defaults_expose_current_momentum_defaults() -> None:
     defaults = StrategyDefaults()
 
     assert defaults.max_catalyst_age_minutes == 90
-    assert defaults.min_move_on_day_percent == Decimal("5")
-    assert defaults.min_daily_relative_volume == Decimal("1.0")
-    assert defaults.min_short_term_relative_volume == Decimal("1.0")
+    assert defaults.min_move_on_day_percent == Decimal("8")
+    assert defaults.min_daily_relative_volume == Decimal("2.0")
+    assert defaults.min_short_term_relative_volume == Decimal("1.5")
     assert defaults.min_pullback_retracement_percent == Decimal("35")
     assert defaults.max_pullback_retracement_percent == Decimal("60")
     assert defaults.preferred_trigger_interval_seconds == 15
     assert defaults.fallback_trigger_interval_seconds == 60
+    assert defaults.max_trigger_age_seconds == 300
 
 
 def test_setup_validity_requires_primary_invalid_reason_for_invalid_rows() -> None:
@@ -221,13 +222,13 @@ def test_evaluate_setup_validity_uses_first_headline_age_for_stale_catalyst() ->
     assert validity.primary_invalid_reason is InvalidReason.STALE_CATALYST
 
 
-def test_evaluate_setup_validity_rejects_weak_relative_volume() -> None:
+def test_evaluate_setup_validity_rejects_weak_daily_relative_volume() -> None:
     observed_at = datetime(2026, 3, 14, 13, 40, tzinfo=UTC)
     linked_news = _linked_news(
         first_published_at=datetime(2026, 3, 14, 13, 0, tzinfo=UTC),
         latest_published_at=datetime(2026, 3, 14, 13, 25, tzinfo=UTC),
     )
-    row = _candidate_row(observed_at=observed_at, daily_rvol="0.8")
+    row = _candidate_row(observed_at=observed_at, daily_rvol="1.5")
     features = ContextFeatures(
         observed_at=observed_at,
         vwap=Decimal("22.00"),
@@ -243,7 +244,29 @@ def test_evaluate_setup_validity_rejects_weak_relative_volume() -> None:
     assert validity.primary_invalid_reason is InvalidReason.INSUFFICIENT_DAILY_RVOL
 
 
-def test_evaluate_setup_validity_rejects_price_below_vwap_before_pullback_checks() -> None:
+def test_evaluate_setup_validity_rejects_weak_short_term_relative_volume() -> None:
+    observed_at = datetime(2026, 3, 14, 13, 40, tzinfo=UTC)
+    linked_news = _linked_news(
+        first_published_at=datetime(2026, 3, 14, 13, 0, tzinfo=UTC),
+        latest_published_at=datetime(2026, 3, 14, 13, 25, tzinfo=UTC),
+    )
+    row = _candidate_row(observed_at=observed_at, short_term_rvol="1.0")
+    features = ContextFeatures(
+        observed_at=observed_at,
+        vwap=Decimal("22.00"),
+        ema_9=Decimal("24.00"),
+        ema_20=Decimal("23.00"),
+        pullback_low=Decimal("23.00"),
+        pullback_retracement_percent=Decimal("40.00"),
+    )
+
+    validity = evaluate_setup_validity(row, linked_news, features)
+
+    assert validity.setup_valid is False
+    assert validity.primary_invalid_reason is InvalidReason.INSUFFICIENT_SHORT_TERM_RVOL
+
+
+def test_evaluate_setup_validity_treats_price_below_vwap_as_soft_modifier() -> None:
     observed_at = datetime(2026, 3, 14, 13, 40, tzinfo=UTC)
     linked_news = _linked_news(
         first_published_at=datetime(2026, 3, 14, 13, 0, tzinfo=UTC),
@@ -261,8 +284,8 @@ def test_evaluate_setup_validity_rejects_price_below_vwap_before_pullback_checks
 
     validity = evaluate_setup_validity(row, linked_news, features)
 
-    assert validity.setup_valid is False
-    assert validity.primary_invalid_reason is InvalidReason.BELOW_VWAP
+    assert validity.setup_valid is True
+    assert validity.primary_invalid_reason is None
 
 
 def test_evaluate_setup_validity_rejects_pullback_too_deep() -> None:
@@ -285,3 +308,25 @@ def test_evaluate_setup_validity_rejects_pullback_too_deep() -> None:
 
     assert validity.setup_valid is False
     assert validity.primary_invalid_reason is InvalidReason.PULLBACK_TOO_DEEP
+
+
+def test_evaluate_setup_validity_rejects_when_no_ema_tagged_pullback() -> None:
+    observed_at = datetime(2026, 3, 14, 13, 40, tzinfo=UTC)
+    linked_news = _linked_news(
+        first_published_at=datetime(2026, 3, 14, 13, 0, tzinfo=UTC),
+        latest_published_at=datetime(2026, 3, 14, 13, 25, tzinfo=UTC),
+    )
+    row = _candidate_row(observed_at=observed_at)
+    features = ContextFeatures(
+        observed_at=observed_at,
+        vwap=Decimal("22.00"),
+        ema_9=Decimal("24.00"),
+        ema_20=Decimal("23.00"),
+        pullback_low=None,
+        pullback_retracement_percent=None,
+    )
+
+    validity = evaluate_setup_validity(row, linked_news, features)
+
+    assert validity.setup_valid is False
+    assert validity.primary_invalid_reason is InvalidReason.MISSING_PULLBACK_CONTEXT

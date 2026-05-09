@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from .trigger_policy import TriggerBarSelection
@@ -25,7 +25,25 @@ class TriggerEvaluation:
             raise ValueError("triggered evaluations must include a trigger_price")
 
 
-def evaluate_first_break_trigger(selection: TriggerBarSelection) -> TriggerEvaluation:
+def _ensure_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("as_of must be timezone-aware")
+    return value.astimezone(UTC)
+
+
+def evaluate_first_break_trigger(
+    selection: TriggerBarSelection,
+    *,
+    as_of: datetime | None = None,
+    max_trigger_age_seconds: int | None = None,
+) -> TriggerEvaluation:
+    as_of_utc = _ensure_utc(as_of) if as_of is not None else None
+    fresh_after = (
+        as_of_utc - timedelta(seconds=max_trigger_age_seconds)
+        if as_of_utc is not None and max_trigger_age_seconds is not None
+        else None
+    )
+
     if len(selection.bars) < 2:
         return TriggerEvaluation(
             triggered=False,
@@ -34,7 +52,15 @@ def evaluate_first_break_trigger(selection: TriggerBarSelection) -> TriggerEvalu
         )
 
     for previous_bar, current_bar in zip(selection.bars, selection.bars[1:]):
+        if as_of_utc is not None and current_bar.start_at > as_of_utc:
+            continue
+        if fresh_after is not None and previous_bar.start_at < fresh_after:
+            continue
+        if fresh_after is not None and current_bar.start_at < fresh_after:
+            continue
         if previous_bar.high_price is None or current_bar.high_price is None:
+            continue
+        if previous_bar.high_price <= 0 or current_bar.high_price <= 0:
             continue
         if current_bar.high_price <= previous_bar.high_price:
             continue

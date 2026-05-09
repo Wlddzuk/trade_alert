@@ -92,7 +92,7 @@ def test_evaluate_invalidation_detects_contradictory_correction_news() -> None:
     assert decision.reason is TriggerInvalidationReason.CONTRADICTORY_CATALYST
 
 
-def test_evaluate_invalidation_detects_pullback_low_break() -> None:
+def test_evaluate_invalidation_treats_pullback_low_break_as_soft_modifier() -> None:
     decision = evaluate_invalidation(
         _row(price="21.90"),
         _linked_news(),
@@ -100,11 +100,11 @@ def test_evaluate_invalidation_detects_pullback_low_break() -> None:
         setup_validity=_validity(),
     )
 
-    assert decision.invalidated is True
-    assert decision.reason is TriggerInvalidationReason.PULLBACK_LOW_BROKEN
+    assert decision.invalidated is False
+    assert decision.reason is None
 
 
-def test_evaluate_invalidation_detects_lost_intraday_context() -> None:
+def test_evaluate_invalidation_treats_lost_intraday_context_as_soft_modifier() -> None:
     decision = evaluate_invalidation(
         _row(price="21.00"),
         _linked_news(),
@@ -112,8 +112,8 @@ def test_evaluate_invalidation_detects_lost_intraday_context() -> None:
         setup_validity=_validity(),
     )
 
-    assert decision.invalidated is True
-    assert decision.reason is TriggerInvalidationReason.LOST_INTRADAY_CONTEXT
+    assert decision.invalidated is False
+    assert decision.reason is None
 
 
 def test_evaluate_invalidation_detects_halt_and_dead_move_conditions() -> None:
@@ -130,7 +130,7 @@ def test_evaluate_invalidation_detects_halt_and_dead_move_conditions() -> None:
     assert dead_move.reason is TriggerInvalidationReason.DEAD_MOVE
 
 
-def test_evaluate_invalidation_detects_weak_relative_volume_before_trigger() -> None:
+def test_evaluate_invalidation_treats_weak_relative_volume_as_soft_modifier() -> None:
     decision = evaluate_invalidation(
         _row(daily_rvol="0.8"),
         _linked_news(),
@@ -138,5 +138,5 @@ def test_evaluate_invalidation_detects_weak_relative_volume_before_trigger() -> 
         setup_validity=_validity(),
     )
 
-    assert decision.invalidated is True
-    assert decision.reason is TriggerInvalidationReason.WEAK_RELATIVE_VOLUME
+    assert decision.invalidated is False
+    assert decision.reason is None

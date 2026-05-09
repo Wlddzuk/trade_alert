@@ -25,13 +25,9 @@ def score_candidate(
     sentiment_multiplier: Decimal | None = None,
     adaptive_adjustment: Decimal | None = None,
 ) -> int:
-    """Score a candidate row with optional LLM sentiment and adaptive learning adjustments.
+    """Momentum-first scoring: float, RVOL, and move size dominate.
 
-    The scoring pipeline is:
-    1. Compute raw rule-based score (0–100)
-    2. Apply sentiment multiplier (0.5x–1.5x) from LLM analysis
-    3. Add adaptive adjustment points (±15) from historical learning
-    4. Clamp final result to 0–100
+    EMA/VWAP/pullback are soft modifiers (bonuses/penalties), not hard gates.
     """
     strategy_defaults = defaults or StrategyDefaults()
 
@@ -41,54 +37,104 @@ def score_candidate(
             score += min(row.change_from_prior_close_percent, Decimal("20")) / Decimal("4")
         return _clamp_score(score)
 
-    score = Decimal("55")
+    score = Decimal("40")  # base for valid setup
+
+    # ── Float bonus (0–15 pts) — LOW FLOAT is the #1 edge ──
+    if row.float_shares is not None:
+        f = row.float_shares
+        if f <= Decimal("10_000_000"):       # under 10M = ideal
+            score += Decimal("15")
+        elif f <= Decimal("20_000_000"):     # 10M-20M = great
+            score += Decimal("12")
+        elif f <= Decimal("50_000_000"):     # 20M-50M = decent
+            score += Decimal("8")
+        elif f <= Decimal("100_000_000"):    # 50M-100M = ok
+            score += Decimal("4")
+        # >100M float = no bonus (large cap, harder to move)
+
+    # ── RVOL bonus (0–15 pts) — high volume confirms interest ──
+    if row.daily_relative_volume is not None:
+        rvol = row.daily_relative_volume
+        if rvol >= Decimal("10"):
+            score += Decimal("15")
+        elif rvol >= Decimal("5"):
+            score += Decimal("12")
+        elif rvol >= Decimal("3"):
+            score += Decimal("8")
+        elif rvol >= Decimal("1.5"):
+            score += Decimal("4")
+        # < 1.5x = no bonus
+
+    # ── Short-term RVOL bonus (0–5 pts) ──
+    if row.short_term_relative_volume is not None:
+        st_rvol = row.short_term_relative_volume
+        if st_rvol >= Decimal("3"):
+            score += Decimal("5")
+        elif st_rvol >= Decimal("1.5"):
+            score += Decimal("3")
+
+    # ── Day move bonus (0–10 pts) ──
+    if row.change_from_prior_close_percent is not None:
+        move = row.change_from_prior_close_percent
+        if move >= Decimal("20"):
+            score += Decimal("10")
+        elif move >= Decimal("10"):
+            score += Decimal("8")
+        elif move >= Decimal("5"):
+            score += Decimal("5")
+
+    # ── Catalyst freshness bonus (0–5 pts) ──
     if setup_validity.catalyst_age_seconds is not None and strategy_defaults.max_catalyst_age_minutes > 0:
         freshness_window_seconds = float(strategy_defaults.max_catalyst_age_minutes * 60)
         freshness_ratio = max(0.0, 1.0 - (setup_validity.catalyst_age_seconds / freshness_window_seconds))
-        score += Decimal(str(freshness_ratio * 5))
-    if row.change_from_prior_close_percent is not None:
-        move_bonus = max(row.change_from_prior_close_percent - strategy_defaults.min_move_on_day_percent, Decimal("0"))
-        score += min(move_bonus, Decimal("20")) / Decimal("2")
-    if row.daily_relative_volume is not None:
-        daily_bonus = max(row.daily_relative_volume - strategy_defaults.min_daily_relative_volume, Decimal("0"))
-        score += min(daily_bonus * Decimal("5"), Decimal("10"))
-    if row.short_term_relative_volume is not None:
-        short_term_bonus = max(
-            row.short_term_relative_volume - strategy_defaults.min_short_term_relative_volume,
-            Decimal("0"),
-        )
-        score += min(short_term_bonus * Decimal("5"), Decimal("10"))
-    if context_features.pullback_retracement_percent is not None:
-        if (
-            strategy_defaults.min_pullback_retracement_percent
-            <= context_features.pullback_retracement_percent
-            <= strategy_defaults.max_pullback_retracement_percent
-        ):
-            score += Decimal("8")
-    if context_features.pullback_volume_lighter:
-        score += Decimal("4")
+        score += Decimal(str(round(freshness_ratio * 5, 1)))
 
-    # Penalty for degraded context — setup valid but missing intraday data
+    # ── Trend context (soft modifiers, NOT gates) ──
     _has_trend = (
-        context_features.vwap is not None
+        row.price is not None
+        and context_features.vwap is not None
         and context_features.ema_9 is not None
         and context_features.ema_20 is not None
     )
-    if not _has_trend:
-        score -= Decimal("10")  # missing VWAP/EMA = unconfirmed trend
-    if context_features.pullback_retracement_percent is None:
-        score -= Decimal("5")   # missing pullback = unconfirmed entry zone
+    if _has_trend:
+        # Above VWAP = bonus, below = small penalty
+        if row.price > context_features.vwap:
+            score += Decimal("3")
+        else:
+            score -= Decimal("3")
+
+        # EMA alignment bonus
+        if context_features.ema_9 > context_features.ema_20:
+            score += Decimal("3")
+        else:
+            score -= Decimal("2")
+    else:
+        score -= Decimal("3")  # missing trend data = slight penalty
+
+    # ── Pullback quality (soft modifier) ──
+    retracement = context_features.pullback_retracement_percent
+    if retracement is not None:
+        if (
+            strategy_defaults.min_pullback_retracement_percent
+            <= retracement
+            <= strategy_defaults.max_pullback_retracement_percent
+        ):
+            score += Decimal("5")  # ideal pullback range
+        elif retracement > strategy_defaults.max_pullback_retracement_percent:
+            score -= Decimal("3")  # too deep = slight penalty
+    if context_features.pullback_volume_lighter:
+        score += Decimal("3")
+
+    # ── Trigger bonus ──
     if trigger_evaluation is not None and trigger_evaluation.triggered:
         score += Decimal("8")
         if trigger_evaluation.bullish_confirmation:
             score += Decimal("3")
 
-    # ── Intelligence layer adjustments ──────────────────────────────
-    # Apply LLM sentiment multiplier (scales score by 0.5x to 1.5x)
+    # ── Intelligence layer adjustments ──
     if sentiment_multiplier is not None:
         score = score * sentiment_multiplier
 
-    # Apply adaptive learning adjustment (adds/subtracts up to ±15 points)
     if adaptive_adjustment is not None:
         score = score + adaptive_adjustment
 

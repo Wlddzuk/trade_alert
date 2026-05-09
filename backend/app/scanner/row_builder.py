@@ -57,6 +57,7 @@ def build_candidate_row(
     metrics: MarketMetrics,
     *,
     observed_at: datetime | None = None,
+    float_shares: Decimal | None = None,
 ) -> CandidateRow | None:
     if linked_news is None or not has_core_row_fields(snapshot, linked_news, metrics):
         return None
@@ -79,5 +80,6 @@ def build_candidate_row(
         gap_percent=metrics.gap_percent,
         change_from_prior_close_percent=metrics.change_from_prior_close_percent,
         pullback_from_high_percent=metrics.pullback_from_high_percent,
+        float_shares=float_shares,
         why_surfaced=build_why_surfaced(linked_news, metrics),
     )

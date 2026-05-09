@@ -122,6 +122,107 @@ body{
 }
 .tab-bar button.active .tab-count{background:var(--cyan-bg);color:var(--cyan)}
 
+/* ═══ ACTIVE SETUPS HERO PANEL ═══ */
+/* Sits at the top of the page when there are live setups. Scanner table
+   below is 50 rows of noise — this panel is the "what do I trade NOW?"
+   view. Active setups render as large cards; closed setups collapse into
+   a small history strip below. */
+.hero-panel{
+  background:linear-gradient(180deg,#0e1a2b 0%,#0a0e17 100%);
+  border-bottom:2px solid var(--border);
+  padding:12px 12px 14px;
+  display:none;  /* revealed by JS when setups exist */
+}
+.hero-panel.has-setups{display:block}
+.hero-title{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.8px;font-weight:700;
+  margin-bottom:10px;
+}
+.hero-title .live-pip{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);
+  display:inline-block;margin-right:6px;
+  animation:pulse 1.5s ease-in-out infinite;
+}
+.hero-title .title-right{display:flex;gap:10px;color:var(--text-secondary);font-weight:500}
+
+/* Active setup cards */
+.setup-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:8px;
+}
+.setup-card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-left:4px solid var(--green);
+  border-radius:8px;
+  padding:10px 12px;
+  font-family:var(--font-sans);
+  transition:background .15s;
+}
+.setup-card.stage-t1_hit{border-left-color:var(--cyan)}
+.setup-card.stage-alerted{border-left-color:var(--green)}
+
+.setup-card .sc-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:6px;
+}
+.setup-card .sc-sym{font-size:15px;font-weight:700;letter-spacing:.3px}
+.setup-card .sc-stage{
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  padding:2px 7px;border-radius:4px;
+}
+.sc-stage.alerted{background:var(--green-bg);color:var(--green)}
+.sc-stage.t1_hit{background:var(--cyan-bg);color:var(--cyan)}
+
+.setup-card .sc-freshness{
+  font-family:var(--font-mono);font-size:10px;
+  color:var(--text-muted);margin-bottom:8px;
+}
+.setup-card .sc-fresh-fresh{color:var(--green)}
+.setup-card .sc-fresh-cool{color:var(--cyan)}
+
+.setup-card .sc-levels{
+  display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;
+  font-family:var(--font-mono);font-size:11px;
+}
+.setup-card .sc-levels .lvl-label{color:var(--text-muted);font-size:9px;text-transform:uppercase;letter-spacing:.4px}
+.setup-card .sc-levels .lvl-value{font-weight:600}
+.setup-card .sc-levels .lvl-entry{color:var(--cyan)}
+.setup-card .sc-levels .lvl-stop{color:var(--red)}
+.setup-card .sc-levels .lvl-t1{color:var(--amber)}
+.setup-card .sc-levels .lvl-t2{color:var(--green)}
+
+.setup-card .sc-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:8px;padding-top:8px;
+  border-top:1px solid var(--border-light);
+  font-size:10px;color:var(--text-muted);
+}
+.setup-card .sc-score{font-family:var(--font-mono);font-weight:700;color:var(--text-primary)}
+
+/* Closed setups — collapsed history strip */
+.closed-strip{
+  display:flex;flex-wrap:wrap;gap:6px;
+  margin-top:10px;padding-top:10px;
+  border-top:1px dashed var(--border);
+}
+.closed-strip:empty{display:none}
+.closed-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--bg-card);border:1px solid var(--border-light);
+  padding:3px 9px;border-radius:999px;
+  font-size:10px;font-family:var(--font-mono);
+}
+.closed-chip .cc-sym{font-weight:700}
+.closed-chip.outcome-t2_hit{border-color:var(--green);color:var(--green)}
+.closed-chip.outcome-stopped{border-color:var(--red);color:var(--red)}
+.closed-chip.outcome-invalidated{border-color:var(--red);color:var(--red);opacity:.7}
+.closed-chip.outcome-expired{border-color:var(--amber);color:var(--amber);opacity:.7}
+
 /* ═══ STATS ROW ═══ */
 .stats-row{
   display:grid;
@@ -277,6 +378,28 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
 .sent-dot.bullish{background:var(--green)}
 .sent-dot.bearish{background:var(--red)}
 
+.chart-link{
+  text-decoration:none;font-size:14px;
+  padding:2px 6px;border-radius:4px;
+  background:var(--cyan-bg);
+  display:inline-block;line-height:1;
+  transition:background .12s;
+}
+.chart-link:hover{background:var(--cyan);filter:brightness(1.1)}
+
+/* Trigger "fired Xm ago" pill — also used inside mobile card */
+.trigger-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--bg-card-hover);
+  padding:3px 8px;border-radius:6px;
+  font-family:var(--font-mono);font-size:11px;font-weight:600;
+  margin-top:6px;
+}
+.trigger-pill.fresh{background:var(--green-bg);color:var(--green)}
+.trigger-pill.cooling{background:var(--cyan-bg);color:var(--cyan)}
+.trigger-pill.stale{color:var(--text-muted)}
+.trigger-pill .tp-price{color:var(--text-secondary);font-weight:500}
+
 /* ═══ EMPTY STATE ═══ */
 .empty-state{
   text-align:center;padding:60px 20px;color:var(--text-muted);
@@ -381,6 +504,19 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
   </div>
 </div>
 
+<!-- ACTIVE SETUPS HERO PANEL (only visible when setups exist) -->
+<div class="hero-panel" id="heroPanel">
+  <div class="hero-title">
+    <span><span class="live-pip"></span>Live Setups</span>
+    <span class="title-right">
+      <span id="heroActiveCount">0 active</span>
+      <span id="heroClosedCount">0 recent</span>
+    </span>
+  </div>
+  <div class="setup-grid" id="setupGrid"></div>
+  <div class="closed-strip" id="closedStrip"></div>
+</div>
+
 <!-- TAB BAR -->
 <div class="tab-bar">
   <button class="active" data-tab="all">All <span class="tab-count" id="tabAll">0</span></button>
@@ -410,12 +546,15 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
         <th data-sort="change_percent">Chg% <span class="sort-arrow">▼</span></th>
         <th data-sort="gap_percent">Gap% <span class="sort-arrow">▼</span></th>
         <th data-sort="volume">Vol <span class="sort-arrow">▼</span></th>
+        <th data-sort="float_shares">Float <span class="sort-arrow">▼</span></th>
         <th data-sort="daily_rvol">RVOL<sub>D</sub> <span class="sort-arrow">▼</span></th>
         <th data-sort="short_term_rvol">RVOL<sub>5m</sub> <span class="sort-arrow">▼</span></th>
         <th data-sort="vwap">VWAP <span class="sort-arrow">▼</span></th>
         <th data-sort="pullback_retracement_pct">Pull% <span class="sort-arrow">▼</span></th>
         <th data-sort="score">Score <span class="sort-arrow">▼</span></th>
         <th data-sort="stage">Stage <span class="sort-arrow">▼</span></th>
+        <th data-sort="trigger_fired_at">Triggered <span class="sort-arrow">▼</span></th>
+        <th>Chart</th>
         <th>Reason</th>
       </tr>
     </thead>
@@ -492,6 +631,14 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
     const sign = n > 0 ? '+' : '';
     return '<span class="'+cls+'">'+sign+n.toFixed(1)+'%</span>';
   }
+  function fmtFloat(v) {
+    if (v == null) return '<span class="val-muted">—</span>';
+    var cls = v <= 10e6 ? 'val-green' : v <= 20e6 ? 'val-cyan' : v <= 50e6 ? 'val-amber' : '';
+    if (v >= 1e9) return '<span class="'+cls+'">'+(v/1e9).toFixed(1)+'B</span>';
+    if (v >= 1e6) return '<span class="'+cls+'">'+(v/1e6).toFixed(1)+'M</span>';
+    if (v >= 1e3) return '<span class="'+cls+'">'+(v/1e3).toFixed(0)+'K</span>';
+    return '<span class="'+cls+'">'+v+'</span>';
+  }
   function fmtRvol(v) {
     if (v == null) return '<span class="val-muted">—</span>';
     const n = Number(v);
@@ -518,6 +665,34 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
   function fmtSentiment(dir) {
     if (!dir || dir === 'neutral') return '';
     return '<span class="sent-dot '+dir+'"></span>';
+  }
+  // Time-since-trigger: "42s", "3m", "17m", "—"
+  function fmtAgo(isoStr) {
+    if (!isoStr) return '<span class="val-muted">—</span>';
+    const t = new Date(isoStr).getTime();
+    if (isNaN(t)) return '<span class="val-muted">—</span>';
+    const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+    let label, cls;
+    if (sec < 60) { label = sec + 's'; }
+    else if (sec < 3600) { label = Math.round(sec / 60) + 'm'; }
+    else { label = Math.round(sec / 3600) + 'h'; }
+    // Fresh (<5m) = green, still useful (<15m) = cyan, old = muted
+    if (sec < 5 * 60) cls = 'val-green';
+    else if (sec < 15 * 60) cls = 'val-cyan';
+    else cls = 'val-muted';
+    return '<span class="'+cls+'" title="'+escHtml(isoStr)+'">'+label+' ago</span>';
+  }
+  function fmtTriggerCell(r) {
+    if (!r.trigger_fired_at) return '<span class="val-muted">—</span>';
+    const ago = fmtAgo(r.trigger_fired_at);
+    const price = r.trigger_price != null ? ' @ $'+Number(r.trigger_price).toFixed(2) : '';
+    return ago + '<div class="val-muted" style="font-size:10px">'+price+'</div>';
+  }
+  // TradingView chart link — opens the symbol on the 5min chart in a new tab
+  function fmtChartLink(sym) {
+    if (!sym) return '';
+    const url = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(sym) + '&interval=5';
+    return '<a href="'+url+'" target="_blank" rel="noopener" class="chart-link" title="Open '+escHtml(sym)+' on TradingView">📈</a>';
   }
   function fmtVwapDelta(price, vwap) {
     if (price == null || vwap == null) return '<span class="val-muted">—</span>';
@@ -560,12 +735,15 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
       '<td>'+fmtPct(r.change_percent)+'</td>' +
       '<td>'+fmtPct(r.gap_percent)+'</td>' +
       '<td>'+fmtVol(r.volume)+'</td>' +
+      '<td>'+fmtFloat(r.float_shares)+'</td>' +
       '<td>'+fmtRvol(r.daily_rvol)+'</td>' +
       '<td>'+fmtRvol(r.short_term_rvol)+'</td>' +
       '<td>'+fmtVwapDelta(r.price,r.vwap)+'</td>' +
       '<td>'+(r.pullback_retracement_pct!=null?fmtNum(r.pullback_retracement_pct,0)+'%':'<span class="val-muted">—</span>')+'</td>' +
       '<td>'+fmtScore(r.score)+'</td>' +
       '<td>'+fmtStage(r.stage)+'</td>' +
+      '<td style="text-align:left">'+fmtTriggerCell(r)+'</td>' +
+      '<td style="text-align:center">'+fmtChartLink(r.symbol)+'</td>' +
       '<td class="val-muted" style="font-family:var(--font-sans);font-size:10px">'+(r.primary_invalid_reason?r.primary_invalid_reason.replace(/_/g,' '):'')+'</td>' +
     '</tr>').join('');
   }
@@ -577,16 +755,37 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
       const stageClass = r.stage === 'trigger_ready' ? 'stage-trigger' : r.stage === 'building' ? 'stage-building' : r.stage === 'invalid' ? 'stage-invalid' : '';
       const reasonHtml = r.primary_invalid_reason ? '<div class="card-reason">'+r.primary_invalid_reason.replace(/_/g,' ')+'</div>' : '';
 
+      // Build the trigger pill (time-ago + price) if we have trigger data
+      let triggerPill = '';
+      if (r.trigger_fired_at) {
+        const t = new Date(r.trigger_fired_at).getTime();
+        const sec = isNaN(t) ? Infinity : Math.max(0, Math.round((Date.now() - t) / 1000));
+        let pcls;
+        if (sec < 5 * 60) pcls = 'fresh';
+        else if (sec < 15 * 60) pcls = 'cooling';
+        else pcls = 'stale';
+        let label;
+        if (sec < 60) label = sec + 's ago';
+        else if (sec < 3600) label = Math.round(sec / 60) + 'm ago';
+        else label = Math.round(sec / 3600) + 'h ago';
+        const pricePart = r.trigger_price != null
+          ? '<span class="tp-price">@ $'+Number(r.trigger_price).toFixed(2)+'</span>'
+          : '';
+        triggerPill = '<div class="trigger-pill '+pcls+'">⚡ fired '+label+' '+pricePart+'</div>';
+      }
+
       return '<div class="card '+stageClass+'" data-idx="'+idx+'">' +
         '<div class="card-head">' +
           '<div><div class="card-sym">'+escHtml(r.symbol)+fmtSentiment(r.sentiment_direction)+'</div><div class="card-catalyst">'+escHtml((r.catalyst_tag||'').replace(/_/g,' '))+'</div></div>' +
-          '<div class="card-score-stage">'+fmtStage(r.stage)+'<span class="card-score" style="color:'+scoreColor(r.score)+'">'+r.score+'</span></div>' +
+          '<div class="card-score-stage">'+fmtChartLink(r.symbol)+fmtStage(r.stage)+'<span class="card-score" style="color:'+scoreColor(r.score)+'">'+r.score+'</span></div>' +
         '</div>' +
+        triggerPill +
         '<div class="card-headline">'+escHtml(r.headline)+'</div>' +
         '<div class="card-metrics">' +
           '<div class="card-metric"><span class="m-label">Price</span><span class="m-value">$'+fmtNum(r.price,2)+'</span></div>' +
           '<div class="card-metric"><span class="m-label">Chg%</span><span class="m-value">'+fmtPct(r.change_percent)+'</span></div>' +
           '<div class="card-metric"><span class="m-label">RVOL</span><span class="m-value">'+fmtRvol(r.daily_rvol)+'</span></div>' +
+          '<div class="card-metric"><span class="m-label">Float</span><span class="m-value">'+fmtFloat(r.float_shares)+'</span></div>' +
           '<div class="card-metric"><span class="m-label">Volume</span><span class="m-value">'+fmtVol(r.volume)+'</span></div>' +
           '<div class="card-metric"><span class="m-label">Gap%</span><span class="m-value">'+fmtPct(r.gap_percent)+'</span></div>' +
           '<div class="card-metric"><span class="m-label">RVOL 5m</span><span class="m-value">'+fmtRvol(r.short_term_rvol)+'</span></div>' +
@@ -603,9 +802,10 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
       '</div>';
     }).join('');
 
-    // Tap to expand cards
+    // Tap to expand cards (ignore taps on chart-link so it opens TradingView)
     cl.querySelectorAll('.card').forEach(card => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.chart-link')) return;
         const idx = card.dataset.idx;
         const exp = document.getElementById('expand-'+idx);
         if (exp) {
@@ -678,6 +878,91 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
       data.scan_duration_seconds ? data.scan_duration_seconds.toFixed(1) + 's' : '';
   }
 
+  // ── Active setups hero panel ──
+  // Renders live + recently-closed setups from /api/alerted-setups.
+  // The scanner table below is the full 50-symbol scan universe —
+  // this panel is the small "actually alerted" subset we're tracking
+  // through its lifecycle (alerted → t1_hit → t2_hit | stopped | ...).
+  function renderSetupCard(s) {
+    // Freshness: seconds since trigger bar started
+    let freshLabel = '', freshCls = '';
+    if (s.trigger_bar_started_at) {
+      const t = new Date(s.trigger_bar_started_at).getTime();
+      if (!isNaN(t)) {
+        const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+        if (sec < 60) freshLabel = sec + 's ago';
+        else if (sec < 3600) freshLabel = Math.round(sec / 60) + 'm ago';
+        else freshLabel = Math.round(sec / 3600) + 'h ago';
+        if (sec < 5 * 60) freshCls = 'sc-fresh-fresh';
+        else if (sec < 15 * 60) freshCls = 'sc-fresh-cool';
+      }
+    }
+    const trigPrice = s.trigger_price != null ? ' @ $' + Number(s.trigger_price).toFixed(2) : '';
+    const chartLink = fmtChartLink(s.symbol);
+    const stageLabel = (s.stage || '').toUpperCase().replace('_', ' ');
+    const catalyst = (s.catalyst_tag || '').replace(/_/g, ' ');
+
+    return '<div class="setup-card stage-' + escHtml(s.stage) + '">' +
+      '<div class="sc-head">' +
+        '<div class="sc-sym">' + escHtml(s.symbol) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          chartLink +
+          '<span class="sc-stage ' + escHtml(s.stage) + '">' + escHtml(stageLabel) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="sc-freshness ' + freshCls + '">⚡ fired ' + escHtml(freshLabel) + escHtml(trigPrice) + '</div>' +
+      '<div class="sc-levels">' +
+        '<span class="lvl-label">Entry</span><span class="lvl-value lvl-entry">$' + Number(s.entry_price).toFixed(2) + '</span>' +
+        '<span class="lvl-label">Stop</span><span class="lvl-value lvl-stop">$' + Number(s.stop_price).toFixed(2) + '</span>' +
+        '<span class="lvl-label">T1</span><span class="lvl-value lvl-t1">$' + Number(s.target_1).toFixed(2) + '</span>' +
+        '<span class="lvl-label">T2</span><span class="lvl-value lvl-t2">$' + Number(s.target_2).toFixed(2) + '</span>' +
+      '</div>' +
+      '<div class="sc-footer">' +
+        '<span>' + escHtml(catalyst || 'catalyst') + '</span>' +
+        '<span class="sc-score">score ' + (s.score_at_entry || 0) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderClosedChip(s) {
+    const stage = s.stage || '';
+    const icon = stage === 't2_hit' ? '🎯' : stage === 'stopped' ? '🛑' : stage === 'invalidated' ? '❌' : stage === 'expired' ? '⌛' : '•';
+    return '<span class="closed-chip outcome-' + escHtml(stage) + '" title="' + escHtml(stage) + '">' +
+      icon + '<span class="cc-sym">' + escHtml(s.symbol) + '</span>' +
+    '</span>';
+  }
+
+  function renderHero(data) {
+    const panel = document.getElementById('heroPanel');
+    const grid = document.getElementById('setupGrid');
+    const strip = document.getElementById('closedStrip');
+    const setups = (data && data.setups) || [];
+    if (setups.length === 0) {
+      panel.classList.remove('has-setups');
+      grid.innerHTML = '';
+      strip.innerHTML = '';
+      return;
+    }
+    const active = setups.filter(s => !s.is_closed);
+    const closed = setups.filter(s => s.is_closed);
+    panel.classList.add('has-setups');
+    document.getElementById('heroActiveCount').textContent = active.length + ' active';
+    document.getElementById('heroClosedCount').textContent = closed.length + ' recent';
+    grid.innerHTML = active.map(renderSetupCard).join('');
+    strip.innerHTML = closed.slice(0, 12).map(renderClosedChip).join('');
+  }
+
+  async function fetchSetups() {
+    try {
+      const res = await fetch('/api/alerted-setups');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderHero(data);
+    } catch(e) {
+      // Silent — panel just stays hidden
+    }
+  }
+
   // ── Fetch data ──
   async function fetchData() {
     try {
@@ -692,6 +977,9 @@ table.scanner tbody tr:nth-child(even):hover{background:var(--bg-row-hover)}
       document.getElementById('statusText').textContent = 'OFFLINE';
       console.error('Fetch failed:', e);
     }
+    // Hero panel fetches independently so its life-cycle is decoupled
+    // from the full scanner (different endpoint, different cadence).
+    fetchSetups();
   }
 
   // ── Countdown timer ──

@@ -28,6 +28,49 @@ def _ema(values: tuple[Decimal, ...], *, period: int) -> Decimal | None:
     return current
 
 
+def _ema_series(values: tuple[Decimal, ...], *, period: int) -> tuple[Decimal | None, ...]:
+    if period <= 0:
+        raise ValueError("period must be greater than zero")
+    if len(values) < period:
+        return tuple(None for _ in values)
+
+    multiplier = Decimal("2") / Decimal(period + 1)
+    seed = sum(values[:period], start=Decimal("0")) / Decimal(period)
+    series: list[Decimal | None] = [None] * (period - 1)
+    series.append(seed)
+    current = seed
+    for value in values[period:]:
+        current = ((value - current) * multiplier) + current
+        series.append(current)
+    return tuple(series)
+
+
+def find_ema_tagged_pullback_candle(
+    bars: tuple[IntradayBar, ...],
+    *,
+    ema_period: int = 9,
+) -> IntradayBar | None:
+    """Most recent bar whose [low, high] straddles the EMA at that bar's close.
+
+    Implements the Ross Cameron pullback rule: the structural stop sits below
+    the low of the candle that *tags* the EMA. If no candle tags the EMA, there
+    is no valid pullback, and the caller must treat the setup as invalid.
+    """
+    bars_with_close = tuple(bar for bar in bars if bar.close_price is not None)
+    if len(bars_with_close) < ema_period:
+        return None
+    closes = tuple(bar.close_price for bar in bars_with_close)
+    ema_values = _ema_series(closes, period=ema_period)
+
+    most_recent_tag: IntradayBar | None = None
+    for bar, ema in zip(bars_with_close, ema_values):
+        if ema is None or bar.low_price is None or bar.high_price is None:
+            continue
+        if bar.low_price <= ema <= bar.high_price:
+            most_recent_tag = bar
+    return most_recent_tag
+
+
 def pullback_retracement_percent(
     *,
     impulse_low: Decimal | None,
@@ -78,8 +121,9 @@ def build_context_features(
     close_series = tuple(bar.close_price for bar in matching_bars if bar.close_price is not None)
     derived_pullback_low = pullback_low
     if derived_pullback_low is None:
-        lows = tuple(bar.low_price for bar in matching_bars if bar.low_price is not None)
-        derived_pullback_low = min(lows) if lows else snapshot.last_price
+        tagged_bar = find_ema_tagged_pullback_candle(matching_bars, ema_period=9)
+        if tagged_bar is not None and tagged_bar.low_price is not None:
+            derived_pullback_low = tagged_bar.low_price
 
     derived_impulse_low = impulse_low or snapshot.low_price
     return ContextFeatures(

@@ -14,17 +14,20 @@ def _as_decimal(value: Decimal | float | int | str, *, field_name: str) -> Decim
 @dataclass(frozen=True, slots=True)
 class StrategyDefaults:
     max_catalyst_age_minutes: int = 90
-    min_move_on_day_percent: Decimal | float | int | str = Decimal("5")
-    min_daily_relative_volume: Decimal | float | int | str = Decimal("1.0")
-    min_short_term_relative_volume: Decimal | float | int | str = Decimal("1.0")
+    min_move_on_day_percent: Decimal | float | int | str = Decimal("8")
+    min_daily_relative_volume: Decimal | float | int | str = Decimal("2.0")
+    min_short_term_relative_volume: Decimal | float | int | str = Decimal("1.5")
     min_pullback_retracement_percent: Decimal | float | int | str = Decimal("35")
     max_pullback_retracement_percent: Decimal | float | int | str = Decimal("60")
     preferred_trigger_interval_seconds: int = 15
     fallback_trigger_interval_seconds: int = 60
+    max_trigger_age_seconds: int = 5 * 60
 
     def __post_init__(self) -> None:
         if self.max_catalyst_age_minutes <= 0:
             raise ValueError("max_catalyst_age_minutes must be greater than zero")
+        if self.max_trigger_age_seconds <= 0:
+            raise ValueError("max_trigger_age_seconds must be greater than zero")
         if self.preferred_trigger_interval_seconds <= 0:
             raise ValueError("preferred_trigger_interval_seconds must be greater than zero")
         if self.fallback_trigger_interval_seconds <= 0:

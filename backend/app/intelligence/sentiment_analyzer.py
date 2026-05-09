@@ -86,17 +86,19 @@ def _parse_llm_response(raw: str, symbol: str, headline: str) -> SentimentVerdic
 
 
 class SentimentAnalyzer:
-    """Analyzes news headlines using OpenAI to produce structured sentiment verdicts."""
+    """Analyzes news headlines using an OpenAI-compatible LLM API (Groq, OpenAI, etc.)."""
 
     def __init__(
         self,
         *,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        base_url: str = "https://api.groq.com/openai/v1",
+        model: str = "llama-3.3-70b-versatile",
         temperature: float = 0.1,
         max_tokens: int = 200,
     ) -> None:
         self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -186,7 +188,7 @@ class SentimentAnalyzer:
 
         session = await self._get_session()
         async with session.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{self.base_url}/chat/completions",
             json=payload,
         ) as resp:
             resp.raise_for_status()

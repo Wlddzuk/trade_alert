@@ -35,6 +35,7 @@ def evaluate_setup_validity(
     first_catalyst_at = first_news_at(linked_news)
     catalyst_age = catalyst_age_seconds(linked_news, observed_at=row.observed_at)
 
+    # Hard gate: must have a catalyst
     if first_catalyst_at is None or catalyst_age is None:
         return _invalid(
             evaluated_at=row.observed_at,
@@ -42,6 +43,7 @@ def evaluate_setup_validity(
             catalyst_age=None,
             reason=InvalidReason.MISSING_CATALYST,
         )
+    # Hard gate: catalyst must be fresh (< max age)
     if catalyst_age > strategy_defaults.max_catalyst_age_minutes * 60:
         return _invalid(
             evaluated_at=row.observed_at,
@@ -49,6 +51,7 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.STALE_CATALYST,
         )
+    # Hard gate: minimum day move
     if (
         row.change_from_prior_close_percent is None
         or row.change_from_prior_close_percent < strategy_defaults.min_move_on_day_percent
@@ -59,12 +62,11 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.INSUFFICIENT_DAY_MOVE,
         )
-    # RVOL checks — only invalidate on CONFIRMED insufficient volume.
-    # None means data unavailable (Polygon free-tier / yfinance down),
-    # not evidence of weak volume.
+
+    # Hard gate: minimum daily relative volume
     if (
-        row.daily_relative_volume is not None
-        and row.daily_relative_volume < strategy_defaults.min_daily_relative_volume
+        row.daily_relative_volume is None
+        or row.daily_relative_volume < strategy_defaults.min_daily_relative_volume
     ):
         return _invalid(
             evaluated_at=row.observed_at,
@@ -72,9 +74,10 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.INSUFFICIENT_DAILY_RVOL,
         )
+    # Hard gate: minimum short-term relative volume
     if (
-        row.short_term_relative_volume is not None
-        and row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume
+        row.short_term_relative_volume is None
+        or row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume
     ):
         return _invalid(
             evaluated_at=row.observed_at,
@@ -82,48 +85,33 @@ def evaluate_setup_validity(
             catalyst_age=catalyst_age,
             reason=InvalidReason.INSUFFICIENT_SHORT_TERM_RVOL,
         )
-    # Trend context checks — only invalidate when data IS available and
-    # shows a bad setup.  Missing data (yfinance down, bars not yet
-    # available) should NOT hard-invalidate; the score penalty in
-    # strategy_ranking handles the uncertainty instead.
-    _has_trend = (
-        row.price is not None
-        and context_features.vwap is not None
-        and context_features.ema_9 is not None
-        and context_features.ema_20 is not None
-    )
-    if _has_trend:
-        if row.price <= context_features.vwap:
-            return _invalid(
-                evaluated_at=row.observed_at,
-                first_catalyst_at=first_catalyst_at,
-                catalyst_age=catalyst_age,
-                reason=InvalidReason.BELOW_VWAP,
-            )
-        if context_features.ema_9 <= context_features.ema_20:
-            return _invalid(
-                evaluated_at=row.observed_at,
-                first_catalyst_at=first_catalyst_at,
-                catalyst_age=catalyst_age,
-                reason=InvalidReason.EMA_MISALIGNMENT,
-            )
+    # Hard gate: pullback must be present (EMA-9-tagged candle, per Ross Cameron rule)
+    if context_features.pullback_low is None or context_features.pullback_retracement_percent is None:
+        return _invalid(
+            evaluated_at=row.observed_at,
+            first_catalyst_at=first_catalyst_at,
+            catalyst_age=catalyst_age,
+            reason=InvalidReason.MISSING_PULLBACK_CONTEXT,
+        )
+    # Hard gate: pullback depth must sit inside [min, max] retracement window
+    if context_features.pullback_retracement_percent < strategy_defaults.min_pullback_retracement_percent:
+        return _invalid(
+            evaluated_at=row.observed_at,
+            first_catalyst_at=first_catalyst_at,
+            catalyst_age=catalyst_age,
+            reason=InvalidReason.PULLBACK_TOO_SHALLOW,
+        )
+    if context_features.pullback_retracement_percent > strategy_defaults.max_pullback_retracement_percent:
+        return _invalid(
+            evaluated_at=row.observed_at,
+            first_catalyst_at=first_catalyst_at,
+            catalyst_age=catalyst_age,
+            reason=InvalidReason.PULLBACK_TOO_DEEP,
+        )
 
-    retracement = context_features.pullback_retracement_percent
-    if retracement is not None:
-        if retracement < strategy_defaults.min_pullback_retracement_percent:
-            return _invalid(
-                evaluated_at=row.observed_at,
-                first_catalyst_at=first_catalyst_at,
-                catalyst_age=catalyst_age,
-                reason=InvalidReason.PULLBACK_TOO_SHALLOW,
-            )
-        if retracement > strategy_defaults.max_pullback_retracement_percent:
-            return _invalid(
-                evaluated_at=row.observed_at,
-                first_catalyst_at=first_catalyst_at,
-                catalyst_age=catalyst_age,
-                reason=InvalidReason.PULLBACK_TOO_DEEP,
-            )
+    # NOTE: EMA alignment and VWAP position remain soft score modifiers
+    # (see strategy_ranking.py). The hard gates above implement the strict
+    # Ross-Cameron-style discipline for the IG CFD execution model.
 
     return SetupValidity(
         setup_valid=True,

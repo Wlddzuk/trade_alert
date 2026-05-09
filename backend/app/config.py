@@ -19,6 +19,20 @@ def _required_positive_float(value: str, *, field_name: str) -> float:
     return parsed
 
 
+def _required_non_negative_int(value: str, *, field_name: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be zero or greater")
+    return parsed
+
+
+def _env_flag(value: str | None, *, default: bool = False) -> bool:
+    cleaned = _clean_optional(value)
+    if cleaned is None:
+        return default
+    return cleaned.lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderEndpointConfig:
     base_url: str
@@ -89,18 +103,32 @@ class TelegramConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class OpenAIConfig:
+class LLMConfig:
     api_key: str | None
+    base_url: str
     model: str
     temperature: float
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str]) -> "OpenAIConfig":
-        return cls(
-            api_key=_clean_optional(env.get("OPENAI_API_KEY")),
-            model=env.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
-            temperature=float(env.get("OPENAI_TEMPERATURE", "0.1")),
-        )
+    def from_env(cls, env: Mapping[str, str]) -> "LLMConfig":
+        # Support Groq (preferred, free) or OpenAI (legacy)
+        groq_key = _clean_optional(env.get("GROQ_API_KEY"))
+        openai_key = _clean_optional(env.get("OPENAI_API_KEY"))
+
+        if groq_key:
+            return cls(
+                api_key=groq_key,
+                base_url="https://api.groq.com/openai/v1",
+                model=env.get("LLM_MODEL", "llama-3.3-70b-versatile").strip() or "llama-3.3-70b-versatile",
+                temperature=float(env.get("LLM_TEMPERATURE", "0.1")),
+            )
+        else:
+            return cls(
+                api_key=openai_key,
+                base_url="https://api.openai.com/v1",
+                model=env.get("OPENAI_MODEL", env.get("LLM_MODEL", "gpt-4o-mini")).strip() or "gpt-4o-mini",
+                temperature=float(env.get("OPENAI_TEMPERATURE", env.get("LLM_TEMPERATURE", "0.1"))),
+            )
 
     @property
     def is_configured(self) -> bool:
@@ -108,11 +136,33 @@ class OpenAIConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentReviewRuntimeConfig:
+    enabled: bool
+    min_score: int
+    timeout_seconds: float
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> "AgentReviewRuntimeConfig":
+        return cls(
+            enabled=_env_flag(env.get("TRADINGAGENTS_REVIEW_ENABLED"), default=False),
+            min_score=_required_non_negative_int(
+                env.get("TRADINGAGENTS_REVIEW_MIN_SCORE", "0"),
+                field_name="TRADINGAGENTS_REVIEW_MIN_SCORE",
+            ),
+            timeout_seconds=_required_positive_float(
+                env.get("TRADINGAGENTS_REVIEW_TIMEOUT_SECONDS", "180"),
+                field_name="TRADINGAGENTS_REVIEW_TIMEOUT_SECONDS",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AppConfig:
     polygon: PolygonConfig
     benzinga: BenzingaConfig
     telegram: TelegramConfig
-    openai: OpenAIConfig
+    llm: LLMConfig
+    agent_review: AgentReviewRuntimeConfig
     dashboard_password: str | None
     dashboard_session_secret: str | None
     dashboard_session_cookie_name: str
@@ -124,7 +174,8 @@ class AppConfig:
             polygon=PolygonConfig.from_env(source),
             benzinga=BenzingaConfig.from_env(source),
             telegram=TelegramConfig.from_env(source),
-            openai=OpenAIConfig.from_env(source),
+            llm=LLMConfig.from_env(source),
+            agent_review=AgentReviewRuntimeConfig.from_env(source),
             dashboard_password=_clean_optional(source.get("DASHBOARD_PASSWORD")),
             dashboard_session_secret=_clean_optional(source.get("DASHBOARD_SESSION_SECRET")),
             dashboard_session_cookie_name=source.get(

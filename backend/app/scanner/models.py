@@ -47,6 +47,7 @@ class CandidateRow:
     change_from_prior_close_percent: Decimal | None
     pullback_from_high_percent: Decimal | None
     why_surfaced: str
+    float_shares: Decimal | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "symbol", normalize_symbol(self.symbol))

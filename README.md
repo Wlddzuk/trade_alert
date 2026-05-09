@@ -160,6 +160,12 @@ The repo currently reads these variables in [backend/app/config.py](/Users/walid
 - `BENZINGA_TIMEOUT_SECONDS`
 - `FINNHUB_API_KEY` for quotes plus sector-peer expansion
 - `SCAN_INTERVAL_SEC` for the ASGI scanner loop interval
+- `TRADINGAGENTS_REVIEW_ENABLED` to enable optional TradingAgents review on trigger-ready alerts
+- `TRADINGAGENTS_REVIEW_MIN_SCORE` minimum score for AI review
+- `TRADINGAGENTS_REVIEW_TIMEOUT_SECONDS` timeout for each AI review
+- `TRADINGAGENTS_MAX_REVIEWS_PER_DAY` daily review cap
+- `TRADINGAGENTS_LLM_PROVIDER` and `TRADINGAGENTS_MODEL` for cheap/free model routing
+- `GOOGLE_API_KEY` for Gemini, or `OPENROUTER_API_KEY` for OpenRouter/Kimi
 
 ### Dashboard Auth
 

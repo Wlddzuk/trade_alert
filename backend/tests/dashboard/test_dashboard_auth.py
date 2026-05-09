@@ -7,7 +7,11 @@ from app.api import DashboardAuthSettings, DashboardRuntimeSnapshotProvider
 from app.main import create_app
 
 
-def test_dashboard_requires_configuration_and_fails_closed() -> None:
+def test_dashboard_requires_configuration_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DASHBOARD_PASSWORD", raising=False)
+    monkeypatch.delenv("DASHBOARD_SESSION_SECRET", raising=False)
     status, headers, body = _request("GET", "/dashboard")
 
     assert status == 503

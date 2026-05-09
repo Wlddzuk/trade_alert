@@ -7,6 +7,7 @@ from app.config import AppConfig
 from app.providers.polygon_adapter import PolygonSnapshotProvider
 from app.providers.models import IntradayBar, ProviderCapability, ProviderHealthState
 from app.scanner.history import MarketHistoryService
+from app.scanner.session_bars import bars_before_session, bars_for_session
 from app.scanner.trigger_policy import resolve_trigger_bars
 from app.scanner.trigger_logic import evaluate_first_break_trigger
 
@@ -130,3 +131,176 @@ def test_evaluate_first_break_trigger_uses_first_intrabar_break_without_requirin
     assert evaluation.trigger_bar_started_at == bars[1].start_at
     assert evaluation.interval_seconds == 15
     assert evaluation.bullish_confirmation is False
+
+
+def test_session_bars_use_market_date_instead_of_utc_date() -> None:
+    previous_session = IntradayBar(
+        symbol="AAPL",
+        provider="yfinance",
+        start_at=datetime(2026, 4, 20, 19, 59, tzinfo=UTC),
+        interval_minutes=1,
+        open_price="10.00",
+        high_price="10.10",
+        low_price="9.90",
+        close_price="10.05",
+        volume=5_000,
+    )
+    current_session = IntradayBar(
+        symbol="AAPL",
+        provider="yfinance",
+        start_at=datetime(2026, 4, 21, 13, 31, tzinfo=UTC),
+        interval_minutes=1,
+        open_price="11.00",
+        high_price="11.20",
+        low_price="10.90",
+        close_price="11.10",
+        volume=7_000,
+    )
+
+    as_of = datetime(2026, 4, 21, 18, 0, tzinfo=UTC)
+
+    assert bars_for_session((previous_session, current_session), as_of=as_of) == (current_session,)
+    assert bars_before_session((previous_session, current_session), as_of=as_of) == (previous_session,)
+
+
+def test_fresh_trigger_window_skips_old_breaks_and_finds_recent_break() -> None:
+    bars = (
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 13, 30, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.00",
+            high_price="10.20",
+            low_price="9.90",
+            close_price="10.10",
+            volume=5_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 13, 31, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.10",
+            high_price="10.40",
+            low_price="10.00",
+            close_price="10.35",
+            volume=6_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 17, 57, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.30",
+            high_price="10.60",
+            low_price="10.20",
+            close_price="10.40",
+            volume=7_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 17, 58, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.40",
+            high_price="10.50",
+            low_price="10.35",
+            close_price="10.45",
+            volume=7_500,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 17, 59, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.40",
+            high_price="10.80",
+            low_price="10.35",
+            close_price="10.75",
+            volume=8_000,
+        ),
+    )
+    selection = resolve_trigger_bars(preferred_bars=(), fallback_bars=bars)
+
+    evaluation = evaluate_first_break_trigger(
+        selection,
+        as_of=datetime(2026, 4, 21, 18, 0, tzinfo=UTC),
+        max_trigger_age_seconds=300,
+    )
+
+    assert evaluation.triggered is True
+    assert evaluation.trigger_price == bars[3].high_price
+    assert evaluation.trigger_bar_started_at == bars[4].start_at
+
+
+def test_fresh_trigger_window_rejects_stale_breaks() -> None:
+    bars = (
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 13, 30, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.00",
+            high_price="10.20",
+            low_price="9.90",
+            close_price="10.10",
+            volume=5_000,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 13, 31, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.10",
+            high_price="10.40",
+            low_price="10.00",
+            close_price="10.35",
+            volume=6_000,
+        ),
+    )
+    selection = resolve_trigger_bars(preferred_bars=(), fallback_bars=bars)
+
+    evaluation = evaluate_first_break_trigger(
+        selection,
+        as_of=datetime(2026, 4, 21, 18, 0, tzinfo=UTC),
+        max_trigger_age_seconds=300,
+    )
+
+    assert evaluation.triggered is False
+
+
+def test_evaluate_first_break_trigger_ignores_zero_price_bars() -> None:
+    bars = (
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 17, 58, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="0",
+            high_price="0",
+            low_price="0",
+            close_price="0",
+            volume=0,
+        ),
+        IntradayBar(
+            symbol="AAPL",
+            provider="yfinance",
+            start_at=datetime(2026, 4, 21, 17, 59, tzinfo=UTC),
+            interval_minutes=1,
+            open_price="10.10",
+            high_price="10.40",
+            low_price="10.00",
+            close_price="10.35",
+            volume=6_000,
+        ),
+    )
+    selection = resolve_trigger_bars(preferred_bars=(), fallback_bars=bars)
+
+    evaluation = evaluate_first_break_trigger(
+        selection,
+        as_of=datetime(2026, 4, 21, 18, 0, tzinfo=UTC),
+        max_trigger_age_seconds=300,
+    )
+
+    assert evaluation.triggered is False

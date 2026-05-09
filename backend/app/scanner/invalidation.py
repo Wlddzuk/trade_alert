@@ -55,35 +55,13 @@ def evaluate_invalidation(
     catalyst_age = catalyst_age_seconds(linked_news, observed_at=row.observed_at)
     if catalyst_age is not None and catalyst_age > strategy_defaults.max_catalyst_age_minutes * 60:
         return InvalidationDecision(True, TriggerInvalidationReason.STALE_CATALYST)
-    # Only invalidate on CONFIRMED weak volume (data present but below threshold).
-    # None means data is unavailable — not evidence of weak volume.
-    if (
-        (row.daily_relative_volume is not None and row.daily_relative_volume < strategy_defaults.min_daily_relative_volume)
-        or (row.short_term_relative_volume is not None and row.short_term_relative_volume < strategy_defaults.min_short_term_relative_volume)
-    ):
-        return InvalidationDecision(True, TriggerInvalidationReason.WEAK_RELATIVE_VOLUME)
     if halt_active:
         return InvalidationDecision(True, TriggerInvalidationReason.HALTED)
-    if (
-        context_features.pullback_retracement_percent is not None
-        and context_features.pullback_retracement_percent > strategy_defaults.max_pullback_retracement_percent
-    ):
-        return InvalidationDecision(True, TriggerInvalidationReason.PULLBACK_TOO_DEEP)
-    if (
-        row.price is not None
-        and context_features.pullback_low is not None
-        and row.price < context_features.pullback_low
-    ):
-        return InvalidationDecision(True, TriggerInvalidationReason.PULLBACK_LOW_BROKEN)
-    if (
-        row.price is not None
-        and context_features.vwap is not None
-        and context_features.ema_20 is not None
-        and row.price <= context_features.vwap
-        and row.price <= context_features.ema_20
-    ):
-        return InvalidationDecision(True, TriggerInvalidationReason.LOST_INTRADAY_CONTEXT)
     if failed_breakout_attempts >= 2:
         return InvalidationDecision(True, TriggerInvalidationReason.DEAD_MOVE)
+
+    # NOTE: RVOL, pullback depth, VWAP/EMA position are now soft score modifiers,
+    # not hard invalidation gates. This lets momentum stocks surface even when
+    # they don't have "perfect" technical setups.
 
     return InvalidationDecision(False)

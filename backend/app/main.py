@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import os
+from collections import Counter
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -11,7 +13,16 @@ from decimal import Decimal
 
 import aiohttp
 import yfinance as yf
+from dotenv import load_dotenv
 
+load_dotenv()
+
+from app.agents import (
+    TradingAgentsReviewConfig,
+    TradingAgentsReviewResult,
+    TradingAgentsReviewer,
+    TradingAgentsReviewStore,
+)
 from app.alerts.action_execution import TelegramActionExecutor
 from app.alerts.action_resolution import TelegramActionRegistry
 from app.alerts.alert_emission import TelegramAlertEmissionService
@@ -35,6 +46,7 @@ from app.intelligence.adaptive_scorer import AdaptiveScorer
 from app.ops.health_models import SystemTrustSnapshot, SystemTrustState
 from app.ops.monitoring_models import ScannerLoopSnapshot
 from app.paper.broker import PaperBroker
+from app.providers.errors import ProviderError
 from app.runtime.session_window import RuntimeWindow
 from app.scanner.feed_service import CandidateFeedService
 from app.scanner.row_builder import build_candidate_row
@@ -43,14 +55,77 @@ from app.scanner.news_linking import latest_news_by_symbol
 from app.scanner.context_features import build_context_features
 from app.scanner.invalidation import evaluate_invalidation
 from app.scanner.setup_validity import evaluate_setup_validity
+from app.scanner.session_bars import bars_before_session, bars_for_session
+from app.scanner.strategy_defaults import StrategyDefaults
 from app.scanner.strategy_projection import project_strategy_row
 from app.scanner.trigger_logic import evaluate_first_break_trigger
 from app.scanner.trigger_policy import resolve_trigger_bars
 from app.dashboard.scanner_state import ScannerRow, get_scanner_state
+from app.dashboard.alerted_setups_state import AlertedSetup, get_alerted_setups_state
 from app.dashboard.scanner_dashboard import render_scanner_dashboard
+from app.intelligence.models import OutcomeRecord, TradeOutcome
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+_STRATEGY_DEFAULTS = StrategyDefaults()
+
+
+def _agent_review_plain_text(result: TradingAgentsReviewResult, *, limit: int = 900) -> str:
+    if result.status == "ok":
+        raw = result.decision
+    else:
+        raw = result.error or result.status
+
+    if isinstance(raw, (dict, list, tuple)):
+        text = json.dumps(raw, default=str, ensure_ascii=False)
+    else:
+        text = str(raw)
+
+    text = " ".join(text.split())
+    if len(text) > limit:
+        text = text[: limit - 3] + "..."
+    return text
+
+
+def _agent_review_text(result: TradingAgentsReviewResult, *, limit: int = 900) -> str:
+    text = _agent_review_plain_text(result, limit=limit)
+    return html.escape(text)
+
+
+async def _run_agent_review(
+    reviewer: TradingAgentsReviewer,
+    store: TradingAgentsReviewStore | None,
+    *,
+    symbol: str,
+    trade_date: str,
+    timeout_seconds: float,
+    context: dict[str, object],
+) -> TradingAgentsReviewResult:
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(reviewer.review, symbol, trade_date),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        result = TradingAgentsReviewResult(
+            ticker=symbol,
+            trade_date=trade_date,
+            status="error",
+            decision=None,
+            llm_provider=reviewer.config.llm_provider,
+            deep_model=reviewer.config.deep_model,
+            quick_model=reviewer.config.quick_model,
+            error=f"TradingAgents review timed out after {timeout_seconds:.0f}s",
+        )
+
+    if store is not None:
+        try:
+            store.append(result, context=context)
+        except Exception as exc:
+            logger.warning("TradingAgents: failed to save review for %s: %s", symbol, exc)
+
+    return result
 
 
 class BuySignalApp:
@@ -89,13 +164,28 @@ class BuySignalApp:
         path = str(scope.get("path", ""))
         headers = tuple(scope.get("headers", ()))
         # ── Scanner dashboard + API routes ──
-        if path == "/" or path == "/scanner" or path == "/scanner/":
+        if path == "/scanner" or path == "/scanner/":
             html = render_scanner_dashboard()
             await _send_bytes(send, status_code=200, body=html.encode("utf-8"), content_type=b"text/html; charset=utf-8")
             return
         if path == "/api/scanner":
             data = get_scanner_state().to_json_bytes()
             await _send_bytes(send, status_code=200, body=data, content_type=b"application/json")
+            return
+        if path == "/api/alerted-setups":
+            # Active + recently-closed setups for the dashboard hero panel.
+            data = get_alerted_setups_state().to_json_bytes()
+            await _send_bytes(send, status_code=200, body=data, content_type=b"application/json")
+            return
+        if path == "/api/learning-summary":
+            # What has the adaptive learning layer actually learned so far?
+            # (Returns {status: "no_data"} until trades start closing.)
+            try:
+                summary = _adaptive_scorer.get_learning_summary() if _adaptive_scorer else {"status": "disabled"}
+            except Exception as exc:
+                summary = {"status": "error", "error": str(exc)}
+            body = json.dumps(summary).encode("utf-8")
+            await _send_bytes(send, status_code=200, body=body, content_type=b"application/json")
             return
         if path == "/health":
             await _send_bytes(send, status_code=200, body=b'{"status":"ok"}', content_type=b"application/json")
@@ -216,6 +306,60 @@ _SCAN_INTERVAL = int(os.environ.get("SCAN_INTERVAL_SEC", "60"))
 _MIN_GAP_PERCENT = float(os.environ.get("MIN_GAP_PERCENT", "5.0"))
 
 
+def _quote_float(raw_quote: dict, *field_names: str) -> float | None:
+    for field_name in field_names:
+        value = raw_quote.get(field_name)
+        if isinstance(value, dict):
+            value = value.get("raw") or value.get("fmt")
+        if value is None:
+            continue
+        try:
+            return float(str(value).replace("%", "").replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _quote_int(raw_quote: dict, *field_names: str) -> int:
+    value = _quote_float(raw_quote, *field_names)
+    return int(value) if value is not None else 0
+
+
+def _mover_from_quote(raw_quote: dict, *, min_gap_percent: float) -> dict | None:
+    sym = str(raw_quote.get("symbol") or "").strip().upper()
+    pct = _quote_float(raw_quote, "regularMarketChangePercent", "percentchange", "percentChange")
+    price = _quote_float(raw_quote, "regularMarketPrice", "intradayprice", "regularMarketPreviousClose")
+    volume = _quote_int(raw_quote, "regularMarketVolume", "dayvolume", "volume")
+    avg_vol = _quote_int(raw_quote, "averageDailyVolume3Month", "averageDailyVolume10Day", "avgdailyvol3m")
+    prev_close = _quote_float(raw_quote, "regularMarketPreviousClose", "previousClose")
+
+    if not sym or pct is None or pct < min_gap_percent or price is None:
+        return None
+
+    return {
+        "symbol": sym,
+        "change_percent": round(pct, 2),
+        "price": price,
+        "volume": volume,
+        "avg_volume": avg_vol or 1,
+        "rvol": round(volume / avg_vol, 2) if avg_vol else 0,
+        "prev_close": prev_close or 0,
+        "day_high": _quote_float(raw_quote, "regularMarketDayHigh", "dayHigh") or price,
+        "day_low": _quote_float(raw_quote, "regularMarketDayLow", "dayLow") or price,
+    }
+
+
+def _parse_movers_from_quotes(raw_quotes: list[dict], *, min_gap_percent: float) -> list[dict]:
+    by_symbol: dict[str, dict] = {}
+    for raw_quote in raw_quotes:
+        mover = _mover_from_quote(raw_quote, min_gap_percent=min_gap_percent)
+        if mover is not None:
+            by_symbol[mover["symbol"]] = mover
+    movers = list(by_symbol.values())
+    movers.sort(key=lambda m: m["change_percent"], reverse=True)
+    return movers
+
+
 def _discover_movers() -> list[dict]:
     """Fetch today's top gainers from Yahoo Finance screener.
 
@@ -223,34 +367,67 @@ def _discover_movers() -> list[dict]:
     avg_volume, rvol, prev_close, day_high, day_low.
     Runs synchronously (yfinance uses requests internally).
     """
+    screen_errors: list[str] = []
+
     try:
         screen = yf.screen("day_gainers", count=50)
-        if not screen or "quotes" not in screen:
-            return []
-    except Exception:
-        return []
+        quotes = screen.get("quotes", []) if isinstance(screen, dict) else []
+        movers = _parse_movers_from_quotes(quotes, min_gap_percent=_MIN_GAP_PERCENT)
+        if movers:
+            return movers
+    except Exception as exc:
+        screen_errors.append(f"day_gainers: {exc}")
 
-    movers = []
-    for q in screen["quotes"]:
-        sym = q.get("symbol")
-        pct = q.get("regularMarketChangePercent", 0)
-        vol = q.get("regularMarketVolume", 0)
-        avg_vol = q.get("averageDailyVolume3Month", 1) or 1
-        if not sym or pct < _MIN_GAP_PERCENT:
-            continue
-        movers.append({
-            "symbol": sym,
-            "change_percent": round(pct, 2),
-            "price": q.get("regularMarketPrice", 0),
-            "volume": vol,
-            "avg_volume": avg_vol,
-            "rvol": round(vol / avg_vol, 2) if avg_vol else 0,
-            "prev_close": q.get("regularMarketPreviousClose", 0),
-            "day_high": q.get("regularMarketDayHigh", 0),
-            "day_low": q.get("regularMarketDayLow", 0),
-        })
-    movers.sort(key=lambda m: m["change_percent"], reverse=True)
-    return movers
+    try:
+        from yfinance import EquityQuery
+
+        query = EquityQuery("and", [
+            EquityQuery("gt", ["percentchange", _MIN_GAP_PERCENT]),
+            EquityQuery("eq", ["region", "us"]),
+            EquityQuery("gte", ["intradayprice", 1]),
+            EquityQuery("gt", ["dayvolume", 50_000]),
+            EquityQuery("is-in", ["exchange", "NMS", "NYQ"]),
+        ])
+        screen = yf.screen(query, sortField="percentchange", sortAsc=False, size=50)
+        quotes = screen.get("quotes", []) if isinstance(screen, dict) else []
+        movers = _parse_movers_from_quotes(quotes, min_gap_percent=_MIN_GAP_PERCENT)
+        if movers:
+            return movers
+    except Exception as exc:
+        screen_errors.append(f"equity_query: {exc}")
+
+    logger.warning(
+        "Yahoo movers returned zero stocks above %.1f%% (%s)",
+        _MIN_GAP_PERCENT,
+        "; ".join(screen_errors) if screen_errors else "no screener matches",
+    )
+    return []
+
+
+def _fetch_float_data(symbols: list[str]) -> dict[str, float]:
+    """Fetch float (shares available to trade) for a batch of symbols via yfinance.
+
+    Returns {symbol: float_shares} dict. Runs synchronously.
+    """
+    if not symbols:
+        return {}
+    result = {}
+    try:
+        tickers = yf.Tickers(" ".join(symbols[:50]))
+        for sym in symbols[:50]:
+            try:
+                info = tickers.tickers[sym].info
+                # Try floatShares first, fall back to sharesOutstanding
+                float_val = info.get("floatShares") or info.get("sharesOutstanding")
+                if float_val and float_val > 0:
+                    result[sym] = float(float_val)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return result
+
+
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 
@@ -314,6 +491,82 @@ def _is_market_hours(now: datetime) -> bool:
     return market_open <= et <= market_close
 
 
+def _record_setup_outcome(
+    setup: AlertedSetup,
+    *,
+    outcome_store: "OutcomeStore",
+) -> None:
+    """Map a terminal lifecycle state → OutcomeRecord and persist it.
+    Feeds the adaptive learning layer so win-rate by catalyst / hour / RVOL
+    starts accumulating. Non-terminal stages (alerted, t1_hit) are skipped."""
+    if not setup.is_terminal_stage:
+        return
+
+    outcome: TradeOutcome
+    exit_price: Decimal | None = None
+    realized_pnl: Decimal | None = None
+
+    if setup.stage == "t2_hit":
+        outcome = TradeOutcome.WIN
+        exit_price = setup.target_2
+        realized_pnl = setup.target_2 - setup.entry_price
+    elif setup.stage == "stopped":
+        # If peak reached T1, user would have moved stop → breakeven.
+        # Otherwise a clean −1R loss.
+        hit_t1 = setup.peak_price is not None and setup.peak_price >= setup.target_1
+        if hit_t1:
+            outcome = TradeOutcome.BREAKEVEN
+            exit_price = setup.entry_price
+            realized_pnl = Decimal("0")
+        else:
+            outcome = TradeOutcome.LOSS
+            exit_price = setup.stop_price
+            realized_pnl = setup.stop_price - setup.entry_price
+    elif setup.stage == "invalidated":
+        outcome = TradeOutcome.LOSS
+        exit_price = setup.stop_price
+        realized_pnl = setup.stop_price - setup.entry_price
+    elif setup.stage == "expired":
+        outcome = TradeOutcome.BREAKEVEN
+        exit_price = setup.entry_price
+        realized_pnl = Decimal("0")
+    else:
+        return
+
+    try:
+        record = OutcomeRecord(
+            trade_id=f"setup:{setup.symbol}:{int(setup.first_alerted_at.timestamp())}",
+            symbol=setup.symbol,
+            entered_at=setup.first_alerted_at,
+            closed_at=setup.closed_at,
+            catalyst_tag=setup.catalyst_tag or "unknown",
+            catalyst_quality=setup.catalyst_quality,
+            sentiment_direction=setup.sentiment_direction,
+            sentiment_confidence=setup.sentiment_confidence,
+            entry_price=setup.entry_price,
+            stop_price=setup.stop_price,
+            target_price=setup.target_1,
+            score_at_entry=setup.score_at_entry,
+            daily_rvol=setup.daily_rvol,
+            short_term_rvol=setup.short_term_rvol,
+            change_percent=setup.change_percent,
+            gap_percent=setup.gap_percent,
+            hour_of_day=setup.first_alerted_at.hour,
+            exit_price=exit_price,
+            realized_pnl=realized_pnl,
+            outcome=outcome,
+        )
+        outcome_store.record_outcome(record)
+        logger.info(
+            "Learning: recorded %s for %s (stage=%s pnl=%s)",
+            outcome.value, setup.symbol, setup.stage, realized_pnl,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Learning: failed to record outcome for %s: %s", setup.symbol, exc,
+        )
+
+
 async def _scanner_loop(
     feed_service: CandidateFeedService,
     dashboard_runtime: DashboardRuntimeComposition,
@@ -321,6 +574,8 @@ async def _scanner_loop(
     *,
     sentiment_analyzer: SentimentAnalyzer | None = None,
     adaptive_scorer: AdaptiveScorer | None = None,
+    agent_reviewer: TradingAgentsReviewer | None = None,
+    agent_review_store: TradingAgentsReviewStore | None = None,
 ) -> None:
     """Background scanner loop — runs inside the uvicorn process."""
     global _countdown_msg_id
@@ -329,9 +584,15 @@ async def _scanner_loop(
 
     finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
 
-    # Telegram state: dedup + tick counter
-    _last_alerted: dict[str, int] = {}  # symbol → last alerted score
+    # Telegram state: one active setup per symbol + tick counter.
+    # Key invariant: at most one "NEW SETUP" message per symbol until the
+    # setup reaches a terminal state (t2_hit / stopped / invalidated / expired)
+    # and a re-alert cooldown passes.
+    _alerted_setups: dict[str, AlertedSetup] = {}
+    _REALERT_COOLDOWN_SEC = 60 * 60       # wait 60 min after close before re-alerting same sym
+    _TRIGGER_EXPIRY_SEC = 15 * 60         # trigger → T1-hit window; past this = expired
     _tick_count = 0
+    _last_building_digest: tuple[tuple[str, int], ...] = ()
 
     def make_poly_fetch(session):
         async def fetch(url, params):
@@ -442,10 +703,19 @@ async def _scanner_loop(
                     ", ".join(f'{m["symbol"]} +{m["change_percent"]}%' for m in movers[:8]),
                 )
 
-                # 1b. Benzinga news — enrich movers with catalyst + pick up any extras
-                news_batch  = await benzinga.fetch_recent_news(limit=100)
-                news_map    = latest_news_by_symbol(news_batch.records)
-                bz_syms     = set(news_map.keys())
+                # 1b. Benzinga news — enrich movers with catalyst + pick up any extras.
+                # If Benzinga is temporarily unavailable, continue with mover-only
+                # synthetic catalysts instead of failing the whole scan.
+                try:
+                    news_batch = await benzinga.fetch_recent_news(limit=100)
+                    news_map = latest_news_by_symbol(news_batch.records)
+                    bz_syms = set(news_map.keys())
+                except ProviderError as bz_err:
+                    if not bz_err.retriable:
+                        raise
+                    logger.warning("Benzinga news failed; continuing with mover-only scan: %s", bz_err)
+                    news_map = {}
+                    bz_syms = set()
 
                 # Priority: movers first (real gappers), then Benzinga-only symbols
                 active_syms = list(dict.fromkeys(mover_syms + [s for s in bz_syms if s not in mover_syms]))[:50]
@@ -511,6 +781,14 @@ async def _scanner_loop(
                             continue
                 if mover_snapshots_prefill:
                     logger.info("Yahoo pre-fill: %d mover snapshots added", len([s for s in mover_snapshots_prefill if s in snapshots]))
+
+                # 2c. Float data (yfinance) — run in thread
+                float_data: dict[str, float] = {}
+                try:
+                    float_data = await loop.run_in_executor(None, _fetch_float_data, active_syms)
+                    logger.info("Float data: %d/%d symbols", len(float_data), len(active_syms))
+                except Exception as float_err:
+                    logger.warning("Float fetch failed: %s", float_err)
 
                 # 3. Polygon daily bars (RVOL history) — limit to 4 symbols to stay within free-tier rate limits
                 daily_bars = ()
@@ -592,15 +870,16 @@ async def _scanner_loop(
                 # 4b. Fill missing snapshots from yfinance last bar (Finnhub rate-limit fallback)
                 from app.providers.models import MarketSnapshot as _MS
                 yf_filled = 0
-                today = now.date()
                 for sym, bars in intraday_by_sym.items():
                     if sym in snapshots or not bars:
                         continue
                     try:
-                        today_bars = [b for b in bars if b.start_at.date() == today]
-                        prev_bars = [b for b in bars if b.start_at.date() < today]
+                        today_bars = bars_for_session(bars, as_of=now)
+                        prev_bars = bars_before_session(bars, as_of=now)
+                        if not today_bars:
+                            continue
                         prev_close = str(prev_bars[-1].close_price) if prev_bars else None
-                        use_bars = today_bars if today_bars else bars
+                        use_bars = today_bars
                         last = use_bars[-1]
                         snapshots[sym] = _MS(
                             symbol=sym, provider="yfinance",
@@ -671,7 +950,7 @@ async def _scanner_loop(
 
                     # ── Data enrichment: VWAP + bars ──
                     intraday = intraday_by_sym.get(sym, ())
-                    today_bars = tuple(b for b in intraday if b.start_at.date() == today)
+                    today_bars = bars_for_session(intraday, as_of=now)
 
                     # Compute VWAP from intraday bars and enrich snapshot
                     enriched_snapshot = snapshot
@@ -731,7 +1010,8 @@ async def _scanner_loop(
                             change_from_prior_close_percent=metrics.change_from_prior_close_percent,
                             pullback_from_high_percent=metrics.pullback_from_high_percent,
                         )
-                    row = build_candidate_row(enriched_snapshot, linked_news, metrics)
+                    sym_float = Decimal(str(float_data[sym])) if sym in float_data else None
+                    row = build_candidate_row(enriched_snapshot, linked_news, metrics, float_shares=sym_float)
                     if row is None:
                         continue
 
@@ -744,13 +1024,17 @@ async def _scanner_loop(
 
                     context = build_context_features(
                         enriched_snapshot,
-                        intraday_bars=intraday,
+                        intraday_bars=today_bars,
                         pullback_volume_lighter=pullback_lighter,
                     )
                     validity    = evaluate_setup_validity(row, linked_news, context)
                     # Trigger: preferred=15s (no 15s bars yet), fallback=60s (yfinance 1m)
-                    trigger_sel  = resolve_trigger_bars(preferred_bars=(), fallback_bars=intraday)
-                    trigger      = evaluate_first_break_trigger(trigger_sel)
+                    trigger_sel  = resolve_trigger_bars(preferred_bars=(), fallback_bars=today_bars)
+                    trigger      = evaluate_first_break_trigger(
+                        trigger_sel,
+                        as_of=now,
+                        max_trigger_age_seconds=_STRATEGY_DEFAULTS.max_trigger_age_seconds,
+                    )
 
                     # Invalidation gate
                     invalidation = evaluate_invalidation(
@@ -798,6 +1082,18 @@ async def _scanner_loop(
                     r = p.row
                     sv = p.setup_validity
                     verdict = sentiment_verdicts.get(r.symbol)
+                    # Surface trigger metadata so the dashboard can show when it fired
+                    te = p.trigger_evaluation
+                    trig_fired_iso = (
+                        te.trigger_bar_started_at.isoformat()
+                        if te is not None and te.trigger_bar_started_at is not None
+                        else None
+                    )
+                    trig_price_f = (
+                        float(te.trigger_price)
+                        if te is not None and te.trigger_price is not None
+                        else None
+                    )
                     _scanner_rows.append(ScannerRow(
                         symbol=r.symbol,
                         price=float(r.price) if r.price is not None else None,
@@ -817,8 +1113,11 @@ async def _scanner_loop(
                         ema_9=None,
                         ema_20=None,
                         pullback_retracement_pct=None,
+                        float_shares=float(r.float_shares) if r.float_shares is not None else None,
                         sentiment_direction=verdict.direction.value if verdict else None,
                         observed_at=r.observed_at.isoformat(),
+                        trigger_fired_at=trig_fired_iso,
+                        trigger_price=trig_price_f,
                     ))
                 # Enrich with context features where available
                 for i, p in enumerate(projections):
@@ -827,7 +1126,10 @@ async def _scanner_loop(
                     snap = enriched_snapshots.get(sym) or snapshots.get(sym)
                     if snap:
                         try:
-                            ctx = build_context_features(snap, intraday_by_sym.get(sym, ()))
+                            ctx = build_context_features(
+                                snap,
+                                bars_for_session(intraday_by_sym.get(sym, ()), as_of=now),
+                            )
                             row = _scanner_rows[i]
                             _scanner_rows[i] = ScannerRow(
                                 symbol=row.symbol, price=row.price, change_percent=row.change_percent,
@@ -840,8 +1142,11 @@ async def _scanner_loop(
                                 ema_9=float(ctx.ema_9) if ctx.ema_9 else None,
                                 ema_20=float(ctx.ema_20) if ctx.ema_20 else None,
                                 pullback_retracement_pct=float(ctx.pullback_retracement_percent) if ctx.pullback_retracement_percent else None,
+                                float_shares=row.float_shares,
                                 sentiment_direction=row.sentiment_direction,
                                 observed_at=row.observed_at,
+                                trigger_fired_at=row.trigger_fired_at,
+                                trigger_price=row.trigger_price,
                             )
                         except Exception:
                             pass
@@ -884,15 +1189,256 @@ async def _scanner_loop(
                     triggered = [p for p in valid if p.stage_tag.value == "trigger_ready"]
                     invalid = [p for p in projections if not p.is_valid]
 
-                    # ── Tier 1: Instant actionable alerts for new/changed valid setups ──
+                    # Gate constants (shared by Tier 0 and Tier 1)
+                    MAX_TRIGGER_AGE_SEC = _STRATEGY_DEFAULTS.max_trigger_age_seconds
+                    MAX_ENTRY_DRIFT_PCT = Decimal("0.0075")  # 0.75%
+                    MIN_STOP_PCT = Decimal("0.005")       # stop must be ≥0.5% below entry
+                    MAX_STOP_PCT = Decimal("0.05")        # stop must be ≤5%  below entry
+                    TARGET_1_R = Decimal("1.5")
+                    TARGET_2_R = Decimal("2.5")
+                    CENT = Decimal("0.01")
+
+                    async def _send_tg(text: str, *, log_label: str, sym: str = "") -> None:
+                        try:
+                            await _telegram_transport.async_send(TelegramTransportRequest(
+                                chat_id=_startup_config.telegram.operator_chat_id,
+                                text=text,
+                            ))
+                            logger.info("Telegram %s sent: %s", log_label, sym)
+                        except Exception as tg_err:
+                            logger.warning("Telegram %s send failed (%s): %s", log_label, sym, tg_err)
+
+                    # ── Tier 0: Lifecycle updates on already-alerted setups ──
+                    # For each active setup, check current price against stop/T1/T2 and
+                    # emit follow-up messages instead of re-sending "NEW SETUP".
+                    # Terminal states (t2_hit/stopped/invalidated/expired) mark closed_at.
+                    invalid_by_sym = {p.row.symbol: p for p in invalid}
+                    for sym, setup in list(_alerted_setups.items()):
+                        if setup.is_closed:
+                            continue  # already terminal, waiting on cooldown
+
+                        snap = snapshots.get(sym)
+                        current_price = snap.last_price if snap is not None else None
+                        if current_price is not None:
+                            setup.peak_price = (
+                                current_price if setup.peak_price is None
+                                else max(setup.peak_price, current_price)
+                            )
+
+                        # Terminal-state handler: emits outcome to learning store + logs it.
+                        # Called once per transition to a terminal stage.
+                        def _finalize_terminal(s: AlertedSetup = setup) -> None:
+                            store = adaptive_scorer.outcome_store if adaptive_scorer else _outcome_store
+                            _record_setup_outcome(s, outcome_store=store)
+
+                        # 1. Invalidation (from projections)
+                        inv_proj = invalid_by_sym.get(sym)
+                        if inv_proj is not None and setup.stage in ("alerted", "t1_hit"):
+                            reason = inv_proj.primary_invalid_reason or "setup_invalid"
+                            setup.stage = "invalidated"
+                            setup.closed_at = now
+                            setup.invalidation_reason = reason
+                            _finalize_terminal()
+                            await _send_tg(
+                                f"❌ <b>{sym} INVALIDATED</b>\n"
+                                f"Reason: <code>{reason}</code>\n"
+                                f"Entry was <code>${setup.entry_price}</code>",
+                                log_label="invalidation", sym=sym,
+                            )
+                            continue
+
+                        if current_price is not None:
+                            # 2. Stopped out (check before T2 — downside wins ties)
+                            if setup.stage in ("alerted", "t1_hit") and current_price <= setup.stop_price:
+                                # r_mult depends on whether T1 was already hit (stop at entry)
+                                r_mult = "breakeven" if setup.stage == "t1_hit" else "−1R"
+                                setup.stage = "stopped"
+                                setup.closed_at = now
+                                _finalize_terminal()
+                                await _send_tg(
+                                    f"🛑 <b>{sym} STOPPED</b>\n"
+                                    f"Exit: <code>${current_price.quantize(CENT)}</code>\n"
+                                    f"Entry: <code>${setup.entry_price}</code>  ({r_mult})",
+                                    log_label="stopped", sym=sym,
+                                )
+                                continue
+
+                            # 3. T2 hit (full exit, terminal)
+                            if setup.stage in ("alerted", "t1_hit") and current_price >= setup.target_2:
+                                setup.stage = "t2_hit"
+                                setup.closed_at = now
+                                _finalize_terminal()
+                                await _send_tg(
+                                    f"🎯🎯 <b>{sym} T2 HIT — full exit</b>\n"
+                                    f"Price: <code>${current_price.quantize(CENT)}</code>\n"
+                                    f"Entry: <code>${setup.entry_price}</code>  (+2.5R)",
+                                    log_label="t2_hit", sym=sym,
+                                )
+                                continue
+
+                            # 4. T1 hit (not terminal — move stop to entry, still aim for T2)
+                            if setup.stage == "alerted" and current_price >= setup.target_1:
+                                setup.stage = "t1_hit"
+                                await _send_tg(
+                                    f"🎯 <b>{sym} T1 HIT — risk-free</b>\n"
+                                    f"Price: <code>${current_price.quantize(CENT)}</code>\n"
+                                    f"Move stop → <code>${setup.entry_price}</code> (breakeven)\n"
+                                    f"Next target: <code>${setup.target_2}</code>",
+                                    log_label="t1_hit", sym=sym,
+                                )
+                                continue
+
+                        # 5. Expired (no T1 follow-through within window)
+                        elapsed_since_fire = (now - setup.trigger_bar_started_at).total_seconds()
+                        if setup.stage == "alerted" and elapsed_since_fire > _TRIGGER_EXPIRY_SEC:
+                            setup.stage = "expired"
+                            setup.closed_at = now
+                            _finalize_terminal()
+                            await _send_tg(
+                                f"⌛ <b>{sym} expired</b>\n"
+                                f"No T1 follow-through in {int(elapsed_since_fire / 60)}min\n"
+                                f"Trigger fired @ <code>${setup.trigger_price}</code>",
+                                log_label="expired", sym=sym,
+                            )
+
+                    # ── Tier 1: New-setup alerts ─────────────────────────────
+                    # Gates: fresh trigger + not chasing + sane pullback stop.
+                    # Dedup: at most one "NEW SETUP" per symbol until its prior
+                    # setup closes and the cooldown expires.
                     for p in sorted(valid, key=lambda x: x.score, reverse=True)[:5]:
                         sym = p.row.symbol
-                        prev_score = _last_alerted.get(sym)
-                        if prev_score is not None and abs(p.score - prev_score) < 5:
-                            continue  # already alerted, score hasn't changed much
 
-                        _last_alerted[sym] = p.score
+                        # ── Dedup via lifecycle state ──────────────────────
+                        existing = _alerted_setups.get(sym)
+                        if existing is not None and not existing.is_closed:
+                            continue  # active setup; let Tier 0 handle updates
+                        if existing is not None and existing.is_closed:
+                            elapsed_since_close = (now - existing.closed_at).total_seconds()
+                            if elapsed_since_close < _REALERT_COOLDOWN_SEC:
+                                continue  # cooldown
+                            # Cooldown passed; only re-alert on a genuinely new trigger bar
+                            trig_eval_check = p.trigger_evaluation
+                            new_fire = trig_eval_check.trigger_bar_started_at if trig_eval_check else None
+                            if new_fire is None or new_fire <= existing.trigger_bar_started_at:
+                                continue
+
+                        # ── Freshness gate ──────────────────────────────────────
+                        trig_eval = p.trigger_evaluation
+                        trig_fire_price = trig_eval.trigger_price if trig_eval else None
+                        trig_fired_at = trig_eval.trigger_bar_started_at if trig_eval else None
+                        fired_ago_sec: int | None = None
+                        if trig_fired_at is not None:
+                            fired_ago_sec = int((now - trig_fired_at).total_seconds())
+                            if fired_ago_sec > MAX_TRIGGER_AGE_SEC:
+                                logger.info(
+                                    "Telegram skip: %s trigger stale (%ds > %ds)",
+                                    sym, fired_ago_sec, MAX_TRIGGER_AGE_SEC,
+                                )
+                                continue
+
+                        # ── Distance gate (don't chase) ─────────────────────────
+                        entry_price = p.row.price
+                        if entry_price is None:
+                            continue
+                        if trig_fire_price is not None and trig_fire_price > 0:
+                            drift = (entry_price - trig_fire_price) / trig_fire_price
+                            if drift > MAX_ENTRY_DRIFT_PCT:
+                                logger.info(
+                                    "Telegram skip: %s price drifted %.2f%% above trigger (entry=%s fire=%s)",
+                                    sym, float(drift) * 100, entry_price, trig_fire_price,
+                                )
+                                continue
+
+                        # ── Stop sanity (pullback-low must be plausible) ────────
+                        stop_price: Decimal | None = None
+                        if p.invalidation is None or not p.invalidation.invalidated:
+                            sym_snapshot = snapshots.get(sym)
+                            if sym_snapshot is not None:
+                                ctx = build_context_features(
+                                    sym_snapshot,
+                                    intraday_bars=intraday_by_sym.get(sym, ()),
+                                )
+                                if ctx.pullback_low is not None:
+                                    lo_bound = (entry_price * (Decimal("1") - MAX_STOP_PCT))
+                                    hi_bound = (entry_price * (Decimal("1") - MIN_STOP_PCT))
+                                    if lo_bound <= ctx.pullback_low <= hi_bound:
+                                        stop_price = ctx.pullback_low.quantize(CENT)
+                        if stop_price is None:
+                            # No sane stop → don't fire an alert we can't trade.
+                            # TODO: replace min(lows) with actual pullback-candle detection
+                            # (Ross Cameron rule) in scanner/context_features.py
+                            logger.info(
+                                "Telegram skip: %s no sane pullback-low stop (entry=%s)",
+                                sym, entry_price,
+                            )
+                            continue
+
+                        # ── Targets + real R:R ──────────────────────────────────
+                        risk = entry_price - stop_price
+                        if risk <= 0:
+                            continue
+                        target_1 = (entry_price + risk * TARGET_1_R).quantize(CENT)
+                        target_2 = (entry_price + risk * TARGET_2_R).quantize(CENT)
+                        rr_value = (target_1 - entry_price) / risk  # real, not hardcoded
+                        rr_ratio = f"R:R  1:{rr_value:.2f}"
+                        risk_per_share = f"Risk ${risk.quantize(CENT)}/share"
+
+                        agent_review: TradingAgentsReviewResult | None = None
+                        if (
+                            agent_reviewer is not None
+                            and p.stage_tag.value == "trigger_ready"
+                            and p.score >= config.agent_review.min_score
+                        ):
+                            agent_review = await _run_agent_review(
+                                agent_reviewer,
+                                agent_review_store,
+                                symbol=sym,
+                                trade_date=now.date().isoformat(),
+                                timeout_seconds=config.agent_review.timeout_seconds,
+                                context={
+                                    "stage": p.stage_tag.value,
+                                    "score": p.score,
+                                    "headline": p.row.headline,
+                                    "catalyst_tag": p.row.catalyst_tag.value,
+                                    "daily_rvol": str(p.row.daily_relative_volume)
+                                    if p.row.daily_relative_volume is not None
+                                    else None,
+                                    "change_percent": str(p.row.change_from_prior_close_percent)
+                                    if p.row.change_from_prior_close_percent is not None
+                                    else None,
+                                },
+                            )
+
+                        # Committed to send — record the setup for Tier-0 lifecycle tracking.
+                        # Snapshot entry-time features so when the setup hits a terminal
+                        # state we can record a full OutcomeRecord for the learning layer.
                         sentiment = sentiment_verdicts.get(sym)
+                        _alerted_setups[sym] = AlertedSetup(
+                            symbol=sym,
+                            first_alerted_at=now,
+                            trigger_price=(trig_fire_price or entry_price).quantize(CENT),
+                            entry_price=entry_price.quantize(CENT),
+                            stop_price=stop_price,
+                            target_1=target_1,
+                            target_2=target_2,
+                            trigger_bar_started_at=trig_fired_at or now,
+                            catalyst_tag=p.row.catalyst_tag.value,
+                            catalyst_quality=sentiment.catalyst_quality.value if sentiment else None,
+                            sentiment_direction=sentiment.direction.value if sentiment else None,
+                            sentiment_confidence=sentiment.confidence if sentiment else None,
+                            agent_review_status=agent_review.status if agent_review else None,
+                            agent_review_decision=(
+                                _agent_review_plain_text(agent_review, limit=500)
+                                if agent_review
+                                else None
+                            ),
+                            agent_review_error=agent_review.error if agent_review else None,
+                            score_at_entry=p.score,
+                            daily_rvol=p.row.daily_relative_volume,
+                            short_term_rvol=p.row.short_term_relative_volume,
+                            change_percent=p.row.change_from_prior_close_percent,
+                            gap_percent=p.row.gap_percent,
+                        )
                         sent_dot = ""
                         if sentiment:
                             sent_dot = {"bullish": " 🟢", "bearish": " 🔴"}.get(
@@ -905,57 +1451,35 @@ async def _scanner_loop(
                             else "building"
                         )
 
-                        # Compute entry / stop / target
-                        entry_price = p.row.price
-                        stop_price = None
-                        target_1 = None
-                        target_2 = None
-                        rr_ratio = ""
-                        risk_per_share = ""
-                        if entry_price is not None:
-                            # Stop: use pullback low from context, or 2% below entry
-                            if (p.invalidation is None or not p.invalidation.invalidated):
-                                sym_snapshot = snapshots.get(sym)
-                                if sym_snapshot is not None:
-                                    ctx = build_context_features(
-                                        sym_snapshot,
-                                        intraday_bars=intraday_by_sym.get(sym, ()),
-                                    )
-                                    if ctx.pullback_low is not None and ctx.pullback_low < entry_price:
-                                        stop_price = ctx.pullback_low
-                            if stop_price is None:
-                                stop_price = (entry_price * Decimal("0.98")).quantize(Decimal("0.01"))
-
-                            risk = float(entry_price) - float(stop_price)
-                            if risk > 0:
-                                target_1 = Decimal(str(round(float(entry_price) + risk * 1.5, 2)))
-                                target_2 = Decimal(str(round(float(entry_price) + risk * 2.5, 2)))
-                                rr_ratio = f"R:R  1:{round(1.5, 1)}"
-                                risk_per_share = f"Risk ${risk:.2f}/share"
-
                         catalyst_label = p.row.catalyst_tag.value.replace("_", " ").title()
                         chg = ""
                         if p.row.change_from_prior_close_percent is not None:
                             chg = f"↑{p.row.change_from_prior_close_percent:.1f}%"
 
+                        # Freshness line ("fired 42s ago @ $17.18")
+                        freshness_line = ""
+                        if fired_ago_sec is not None and trig_fire_price is not None:
+                            freshness_line = (
+                                f"⚡ fired {fired_ago_sec}s ago @ "
+                                f"<code>${trig_fire_price.quantize(CENT)}</code>"
+                            )
+                        elif fired_ago_sec is not None:
+                            freshness_line = f"⚡ fired {fired_ago_sec}s ago"
+
                         lines = [
                             f"🔔 <b>NEW SETUP — {sym}</b>",
                             "",
                             f"🟢 BUY  │  score {p.score}/100  │  {stage_icon} {stage_label}{sent_dot}",
-                            "",
                         ]
-                        if entry_price is not None:
-                            lines.append(f"Entry:    <code>${entry_price}</code>")
-                        if stop_price is not None:
-                            lines.append(f"Stop:     <code>${stop_price}</code>  🛑")
-                        if target_1 is not None:
-                            lines.append(f"Target₁:  <code>${target_1}</code>  🎯")
-                        if target_2 is not None:
-                            lines.append(f"Target₂:  <code>${target_2}</code>  🎯")
-                        if rr_ratio or risk_per_share:
-                            lines.append("")
-                            parts = [x for x in [rr_ratio, risk_per_share] if x]
-                            lines.append("  │  ".join(parts))
+                        if freshness_line:
+                            lines.append(freshness_line)
+                        lines.append("")
+                        lines.append(f"Entry:    <code>${entry_price.quantize(CENT)}</code>")
+                        lines.append(f"Stop:     <code>${stop_price}</code>  🛑")
+                        lines.append(f"Target₁:  <code>${target_1}</code>  🎯")
+                        lines.append(f"Target₂:  <code>${target_2}</code>  🎯")
+                        lines.append("")
+                        lines.append(f"{rr_ratio}  │  {risk_per_share}")
 
                         # Stats line
                         lines.append("")
@@ -972,15 +1496,78 @@ async def _scanner_loop(
                         lines.append("")
                         lines.append(f"💡 {p.row.headline[:55]}")
 
-                        text = "\n".join(lines)
-                        try:
-                            await _telegram_transport.async_send(TelegramTransportRequest(
-                                chat_id=_startup_config.telegram.operator_chat_id,
-                                text=text,
-                            ))
-                            logger.info("Telegram actionable alert sent: %s (score %d)", sym, p.score)
-                        except Exception as tg_err:
-                            logger.warning("Telegram alert send failed: %s", tg_err)
+                        if agent_review is not None:
+                            lines.append("")
+                            lines.append("🤖 <b>AI Agent Review</b>")
+                            review_label = "Decision" if agent_review.status == "ok" else agent_review.status.title()
+                            lines.append(f"{review_label}: {_agent_review_text(agent_review)}")
+                        elif agent_reviewer is not None and p.stage_tag.value == "trigger_ready":
+                            lines.append("")
+                            lines.append("🤖 <b>AI Agent Review</b>")
+                            lines.append("Skipped: score below configured review threshold")
+
+                        await _send_tg(
+                            "\n".join(lines),
+                            log_label=f"new_setup score={p.score}",
+                            sym=sym,
+                        )
+
+                    # ── Publish lifecycle state for the dashboard hero panel ──
+                    # Active setups + recently-closed ones (purged after cooldown).
+                    # Prune anything older than the re-alert cooldown so the panel
+                    # doesn't pile up stale closed rows.
+                    for stale_sym, stale_setup in list(_alerted_setups.items()):
+                        if (
+                            stale_setup.is_closed
+                            and stale_setup.closed_at is not None
+                            and (now - stale_setup.closed_at).total_seconds() > _REALERT_COOLDOWN_SEC
+                        ):
+                            _alerted_setups.pop(stale_sym, None)
+                    get_alerted_setups_state().replace(list(_alerted_setups.values()))
+
+                    # ── Tier 1b: Building watchlist ─────────────────────────
+                    # These are not trade alerts: no stop/target lifecycle, no
+                    # approval buttons. They mirror the dashboard's building tab.
+                    top_building = sorted(building, key=lambda x: x.score, reverse=True)[:5]
+                    building_digest = tuple((bp.row.symbol, bp.score) for bp in top_building)
+                    if top_building and (
+                        building_digest != _last_building_digest or _tick_count % 5 == 0
+                    ):
+                        building_lines = [
+                            f"🔨 <b>BUILDING SETUPS</b> — {now.strftime('%H:%M:%S UTC')}  │  {elapsed:.1f}s",
+                            "",
+                            f"{len(building)} building  │  {len(triggered)} actionable  │  {len(invalid)} invalid",
+                            "",
+                        ]
+                        for bp in top_building:
+                            price_text = (
+                                f"${bp.row.price.quantize(CENT)}"
+                                if bp.row.price is not None
+                                else "$--"
+                            )
+                            stats = []
+                            if bp.row.change_from_prior_close_percent is not None:
+                                stats.append(f"↑{bp.row.change_from_prior_close_percent:.1f}%")
+                            if bp.row.gap_percent is not None:
+                                stats.append(f"gap {bp.row.gap_percent:.1f}%")
+                            if bp.row.daily_relative_volume is not None:
+                                stats.append(f"RVOL {bp.row.daily_relative_volume:.1f}x")
+                            catalyst_label = bp.row.catalyst_tag.value.replace("_", " " ).title()
+                            stat_text = "  │  ".join(stats) if stats else "watching"
+                            building_lines.append(
+                                f"• <b>{bp.row.symbol}</b>  {price_text}  score {bp.score}  │  {stat_text}  │  {catalyst_label}"
+                            )
+                        building_lines.extend([
+                            "",
+                            "<i>Watchlist only — not a buy alert yet.</i>",
+                        ])
+                        await _send_tg(
+                            "\n".join(building_lines),
+                            log_label="building_watchlist",
+                        )
+                        _last_building_digest = building_digest
+                    elif not top_building and _last_building_digest:
+                        _last_building_digest = ()
 
                     # ── Tier 2: Periodic scan summary (every 5th tick) ──
                     if not valid and _tick_count % 5 == 0 and projections:
@@ -989,6 +1576,18 @@ async def _scanner_loop(
                             "",
                             f"⚡ {len(triggered)} actionable  │  🔨 {len(building)} building  │  ❌ {len(invalid)} invalid",
                         ]
+                        invalid_reasons = Counter(p.primary_invalid_reason or "unknown" for p in invalid)
+                        if invalid_reasons:
+                            reason_text = ", ".join(
+                                f"{reason} {count}"
+                                for reason, count in invalid_reasons.most_common(3)
+                            )
+                            summary_lines.append(f"Reasons: {reason_text}")
+                        source_text = (
+                            f"Sources: {len(mover_syms)} movers, "
+                            f"{len([s for s in active_syms if s not in mover_syms])} Benzinga-only"
+                        )
+                        summary_lines.append(source_text)
                         # Show top building setups (almost ready)
                         top_building = sorted(building, key=lambda x: x.score, reverse=True)[:3]
                         if top_building:
@@ -1062,19 +1661,35 @@ else:
 # ── Intelligence layer initialization ─────────────────────────────────────────
 
 _sentiment_analyzer: SentimentAnalyzer | None = None
-if _startup_config.openai.is_configured:
+if _startup_config.llm.is_configured:
     _sentiment_analyzer = SentimentAnalyzer(
-        api_key=_startup_config.openai.api_key,  # type: ignore[arg-type]
-        model=_startup_config.openai.model,
-        temperature=_startup_config.openai.temperature,
+        api_key=_startup_config.llm.api_key,  # type: ignore[arg-type]
+        base_url=_startup_config.llm.base_url,
+        model=_startup_config.llm.model,
+        temperature=_startup_config.llm.temperature,
     )
-    logger.info("Intelligence: LLM sentiment analyzer enabled (model=%s)", _startup_config.openai.model)
+    logger.info("Intelligence: LLM sentiment analyzer enabled (model=%s, provider=%s)", _startup_config.llm.model, _startup_config.llm.base_url)
 else:
-    logger.info("Intelligence: LLM sentiment analyzer disabled (no OPENAI_API_KEY)")
+    logger.info("Intelligence: LLM sentiment analyzer disabled (no GROQ_API_KEY or OPENAI_API_KEY)")
 
 _outcome_store = OutcomeStore()
 _adaptive_scorer = AdaptiveScorer(_outcome_store)
 logger.info("Intelligence: adaptive learning layer enabled (store=%s)", _outcome_store.path)
+
+_agent_reviewer: TradingAgentsReviewer | None = None
+_agent_review_store: TradingAgentsReviewStore | None = None
+if _startup_config.agent_review.enabled:
+    _agent_reviewer = TradingAgentsReviewer(TradingAgentsReviewConfig.from_env(os.environ))
+    _agent_review_store = TradingAgentsReviewStore()
+    logger.info(
+        "TradingAgents: review layer enabled (provider=%s model=%s min_score=%d cap=%d)",
+        _agent_reviewer.config.llm_provider,
+        _agent_reviewer.config.deep_model,
+        _startup_config.agent_review.min_score,
+        _agent_reviewer.config.max_reviews_per_day,
+    )
+else:
+    logger.info("TradingAgents: review layer disabled (set TRADINGAGENTS_REVIEW_ENABLED=true)")
 
 _countdown_msg_id: str | None = None
 _scanner_task: asyncio.Task | None = None
@@ -1125,6 +1740,8 @@ async def _lifespan(scope, receive, send) -> None:
                 _startup_config,
                 sentiment_analyzer=_sentiment_analyzer,
                 adaptive_scorer=_adaptive_scorer,
+                agent_reviewer=_agent_reviewer,
+                agent_review_store=_agent_review_store,
             )
         )
         await send({"type": "lifespan.startup.complete"})
